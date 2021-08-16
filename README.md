@@ -16,3 +16,7 @@ sample1_classification.txt        sample1_junctions.txt
 sample2_classification.txt        sample2_junctions.txt
 
 sample3_classification.txt        sample3_junctions.txt
+
+## Example run in bash
+
+Rscript sqanti3_comparison_report.R example example_html_report exampleout
