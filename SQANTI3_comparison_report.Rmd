@@ -1,0 +1,122 @@
+---
+title: "SQANTI3 OUTPUT COMPARISON REPORT"
+author: "`r paste0('  ','Author', ': ',Sys.getenv('USERNAME'))`"
+date: "`r paste0('  ','Date', ': ', format(Sys.time(), '%d %B %Y'))`"
+output:
+  html_document:
+    number_sections: false
+    toc: false
+    toc_float: false
+    theme: spacelab
+---
+
+<!-- Basic setting -->
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache = FALSE, echo = FALSE)
+venn <- FALSE
+```
+
+<!-- Run -->
+
+```{r}
+res <- compareTranscriptomes(f_in)
+```
+
+<!-- Plot generation -->
+
+## Plots {.tabset .tabset-pills}
+
+### Summary
+
+```{r}
+str_cat <- c("antisense", "full-splice_match", "fusion", "genic", "incomplete-splice_match", "intergenic", "novel_in_catalog", "novel_not_in_catalog")
+df_summary <- data.frame(ID = names(res[[2]][3:ncol(res[[2]])]))
+n <- c()
+for (i in res[[1]]) {
+  n <- c(n, nrow(i))
+}
+df_summary$n_total <- n
+
+for (i in str_cat) {
+  n <- c()
+  for (j in res[[1]]) {
+    n <- c(n, nrow(j[j$structural_category == i,]))
+  }
+  df_summary[,i] <- n
+}
+
+DT::datatable(df_summary,
+              extensions = "Buttons",
+              options = list(
+                  order = list(list(5, "asc"),list(1, "desc")),
+                  dom = 'Bfrtip',
+                  buttons = c('copy', 'csv', 'pdf', 'print')
+              ),
+              escape = FALSE,
+              caption = "Table 1. Summary from SQANTI3 output comparison")
+```
+
+<!-- Print or not Venn Diagrams -->
+
+```{r}
+if (length(f_in) < 4) {
+  venn<-TRUE
+  asis_output("### Venn Diagrams\\n") # Header
+  }
+```
+
+```{r, eval=venn}
+str_cat <- c("antisense", "full-splice_match", "fusion", "genic", "incomplete-splice_match", "intergenic", "novel_in_catalog", "novel_not_in_catalog")
+contador <- 1
+for (i in 1:length(res[[2]])) {
+  a <- res[[2]][res[[2]]$structural_category == str_cat[i], names(res[[2]])[3:length(names(res[[2]]))]]
+  l <- list()
+  for (j in 1:ncol(a)) {
+    l[[j]] <- na.omit(a[,j])
+  }
+  names(l) <- names(a)
+  print(ggvenn(
+  l, 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#CD534CFF"),
+  stroke_size = 0.5, set_name_size = 4
+  ) + ggtitle(str_cat[contador]) +
+    theme(plot.title = element_text(hjust = 0.5)))
+  contador <- contador + 1
+}
+```
+
+### UpSet plot
+
+```{r}
+str_cat <- c("antisense", "full-splice_match", "fusion", "genic", "incomplete-splice_match", "intergenic", "novel_in_catalog", "novel_not_in_catalog")
+contador <- 1
+for (i in 1:length(res[[2]])) {
+  a <- res[[2]][res[[2]]$structural_category == str_cat[i], names(res[[2]])[3:length(names(res[[2]]))]]
+  l <- list()
+  for (j in 1:ncol(a)) {
+    l[[j]] <- na.omit(a[,j])
+  }
+  names(l) <- names(a)
+  
+  a <- UpSetR::upset(UpSetR::fromList(l), order.by = "freq", mainbar.y.label = "Isoform Intersections", sets.x.label = "Isoforms Per Sample")
+  print(a)
+  grid.text(str_cat[i],x = 0.65, y=0.95, gp=gpar(fontsize=20))
+}
+```
+
+### Standard deviation and Entropy
+
+```{r}
+a <- bind_rows(res$classifications, .id = "pipeline")
+for (i in colnames(a[6:9])){
+  print(ggplot(a, aes(log2(a[,i]))) +
+  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",i,")")))
+}
+```
+
+## SessionInfo
+
+```{r}
+sessionInfo()
+```
