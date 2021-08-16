@@ -11,8 +11,8 @@ dir_out: Output directory for the report and CSV file (working directory as defa
 
 $ ls ~/home/dir_in
 
-sample1_classification.txt sample1_junctions.txt
+sample1_classification.txt        sample1_junctions.txt
 
-sample2_classification.txt sample2_junctions.txt
+sample2_classification.txt        sample2_junctions.txt
 
-sample3_classification.txt sample3_junctions.txt
+sample3_classification.txt        sample3_junctions.txt
