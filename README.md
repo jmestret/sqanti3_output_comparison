@@ -1,6 +1,6 @@
 # SQANTI3 OUTPUT COMPARATOR
 
-The script **sqanti3_output_comparison** is plugin for the SQANTI3 tool ([publication](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5848618/) and [code repository](https://github.com/ConesaLab/SQANTI)). This tool aims to compare different SQANTI3 outputs in order to explore the similarities and differences from different samples, replicates, pipelines or technologies.
+The script **sqanti3_output_comparison** is a plugin for the SQANTI3 tool ([publication](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5848618/) and [code repository](https://github.com/ConesaLab/SQANTI)). This tool aims to compare different SQANTI3 outputs in order to explore the similarities and differences from different samples, replicates, pipelines or technologies.
 
 ## Running
 
