@@ -20,16 +20,17 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 
+directory <- args[1]
 if (length(args) == 0) {
   stop("You must supply at least one argument (directory containing classification and junctions files)")
 } else if (length(args) == 1) {
   output_name <- "example_html_report"
+  output_directory <- "."
 } else if (length(args) == 2) {
   output_directory <- "."
 } else if (length(args) > 3) {
   stop("You supplied more than the required arguments")
 } else {
-  directory <- args[1]
   output_name <- args[2]
   output_directory <- args[3]
 }
@@ -237,3 +238,4 @@ rmarkdown::render(
 # -------------------- Output csv
 
 write.csv(res$comparisonPA, paste0(output_directory, "/", output_name, ".csv"))
+
