@@ -23,19 +23,43 @@ sample2_classification.txt        sample2_junctions.txt
 sample3_classification.txt        sample3_junctions.txt
 ```
 
-**Usage**
+#### Usage
+
+The -d argument in mandatory.
+
+- **-d**: Name of the directory containing the SQANTI3 output files (classification and junction files are required)
+
+- **-o**: Output directory for the report and CSV file (working directory as default)
+
+- **-n**: Output name for the HTML report (without extension)
 
 ```
 #!bash
-$ Rscript sqanti3_comparison_report.R dir_in report_name dir_out
+$ Rscript sqanti3_comparison_report.R -h
 
-# dir_in: Name of the directory containing the SQANTI3 output files (classification and junction files are required)
+Usage: sqanti3_comparison_report.R [-i DIRIN] [-o DIROUT] [-n OUTNAME]
 
-# report_name: Output name for the HTML report (without extension)
 
-# dir_out: Output directory for the report and CSV file (working directory as default)
+Options:
+	-d DIRIN, --dir=DIRIN
+		directory with input files (classification and junction files)
+
+	-o DIROUT, --outdir=DIROUT
+		Output directory for the report and CSV file [default= .]
+
+	-n OUTNAME, --name=OUTNAME
+		Output name for the HTML report and CSV file (without extension) [default= comparison_output]
+
+	-h, --help
+		Show this help message and exit
 ```
 
-## Example run in bash
+#### Example run in bash
 
-`Rscript sqanti3_comparison_report.R exampledata example_html_report exampleout`
+Using only the -d argument:
+
+`Rscript sqanti3_comparison_report.R -d exampledata`
+
+Using all arguments:
+
+`Rscript sqanti3_comparison_report.R -d exampledata -o exampleout -n nameout`
