@@ -258,6 +258,425 @@ iso2url <- function(id){
   } else { return(NA) }
 }
 
+
+# -------------------- 
+# --------------------  RUN COMPARISON
+res <- compareTranscriptomes(f_in)
+
+
+# -------------------- Table and Plot generation
+
+# -------------------- 
+# -------------------- 
+# TABLE INDEX
+# t1: summary table
+# t2: presence/ausence table
+
+# -------------------- 
+# -------------------- 
+# PLOT INDEX
+# p1: gene characterization
+#   p1.1: isoforms per gene
+#   p1.2: exon structure
+# p2: structural category distribution
+# p3: splice junction distribution for each SC
+# p4: distance to TSS
+# p5: distance to TTS
+# p6: distance to CAGE peak
+# p7: bad quality features
+# p8: good quality features
+# p9: Venn diagrams 
+# p10: UpSet plot
+# p11: Venn diagrams for SC
+# p12: UpSet plot for SC
+# p13: TSS standard deviation
+# p14: TTS standard deviation
+# p15: TSS entropy
+# p16: TTS entropy
+
+# -------------------- 
+# TABLE 1: summary table
+
+str_cat <- c("antisense", "full-splice_match", "fusion", "genic", "incomplete-splice_match", "intergenic", "novel_in_catalog", "novel_not_in_catalog")
+df_summary <- data.frame(ID = names(res[[2]][3:ncol(res[[2]])]))
+
+# Count total isoform from SQANTI3
+n <- c()
+for (i in f_in) {
+  n <- c(n, nrow(i[[1]]))
+}
+df_summary$total <- n
+
+# Count unique tags
+n <- c()
+for (i in res[[1]]) {
+  n <- c(n, nrow(i))
+}
+df_summary$uniq_id <- n
+
+# Count unique tags for each category
+for (i in str_cat) {
+  n <- c()
+  for (j in res[[1]]) {
+    n <- c(n, nrow(j[j$structural_category == i,]))
+  }
+  df_summary[,i] <- n
+}
+
+colnames(df_summary) <- 
+  c("ID","total", "unique_tag","antisense", "FSM", "fusion", "genic", "ISM", "intergenic", "NIC", "NNC")
+
+t1 <- DT::datatable(df_summary,
+              extensions = "Buttons",
+              options = list(
+                order = list(list(5, "asc"),list(1, "desc")),
+                dom = 'Bfrtip',
+                buttons = c('copy', 'csv', 'pdf', 'print')
+              ),
+              escape = FALSE,
+              caption = "Table 1. Summary from SQANTI3 output comparison")
+
+# TABLE 2: presence/ausence isoforms
+
+df.PA <- res[[3]]
+df.PA$TAGS <- lapply(df.PA$TAGS, iso2url)
+t2 <- DT::datatable(df.PA,
+              escape = FALSE,
+              options = list(
+                pageLength = 10,
+                autoWidth = TRUE,
+                columnDefs = list(list(width = '10px', targets = "_all"))
+              ),
+              rownames = FALSE,
+              caption = "Table 2. Presence/Ausence of all the isoform models")
+
+# -------------------- 
+# PLOT 1: gene characterization
+# PLOT 1.1: isoforms per gene
+
+countpergene <- c()
+exonstructure <- c()
+for (data in f_in){
+  data.class <- data[[1]]
+  
+  data.class$novelGene <- "Annotated Genes"
+  data.class[grep("novelGene", data.class$associated_gene), "novelGene"] <- "Novel Genes"
+  data.class$novelGene = factor(data.class$novelGene,
+                                levels = c("Novel Genes","Annotated Genes"),
+                                ordered=TRUE)
+  
+  isoPerGene = aggregate(data.class$isoform,
+                         by = list("associatedGene" = data.class$associated_gene,
+                                   "novelGene" = data.class$novelGene,
+                                   "FSM_class" = data.class$FSM_class),
+                         length)
+  
+  data.class[which(data.class$exons>1), "exonCat"] <- "Multi-Exon"
+  data.class[which(data.class$exons==1), "exonCat"] <- "Mono-Exon"
+  data.class$exonCat = factor(data.class$exonCat,
+                              levels = c("Multi-Exon","Mono-Exon"),
+                              ordered=TRUE)
+  
+  canonical.labels=c("Canonical", "Non-canonical")
+  data.class$all_canonical = factor(data.class$all_canonical,
+                                    labels=canonical.labels,
+                                    levels = c("canonical","non_canonical"),
+                                    ordered=TRUE)
+  
+  countpergene <- c(
+    countpergene,
+    sum(isoPerGene$x == 1),
+    sum(isoPerGene$x == 2 | isoPerGene$x == 3),
+    sum(isoPerGene$x == 4 | isoPerGene$x == 5),
+    sum(isoPerGene$x >= 6)
+  )
+  
+  exonstructure <- c(
+    exonstructure,
+    sum(data.class$novelGene == "Novel Genes" & data.class$exonCat == "Mono-Exon"),
+    sum(data.class$novelGene == "Novel Genes" & data.class$exonCat == "Multi-Exon"),
+    sum(data.class$novelGene == "Annotated Genes" & data.class$exonCat == "Mono-Exon"),
+    sum(data.class$novelGene == "Annotated Genes" & data.class$exonCat == "Multi-Exon")
+    
+  )
+  
+  
+}
+
+sample <- c(rep(names(f_in), each=4))
+number <- rep(c("1","2-3","4-5", ">=6"), times=length(f_in))
+isoPerGene <- data.frame(sample, number, countpergene)
+
+p1.1 <- ggplot(isoPerGene, aes(fill=number, y=countpergene, x=sample)) +
+  geom_bar(position = "fill", stat = "identity")
+
+
+
+# PLOT 1.2: exon structure
+
+category <- rep(c("Novel-Mono", "Novel-Multi", "Annotated-Mono", "Annotated-Multi"), times=length(f_in))
+exonstructure <- data.frame(sample, category, exonstructure)
+
+p1.2 <- ggplot(exonstructure, aes(fill=category, y=exonstructure, x=sample)) +
+  geom_bar(position = "fill", stat = "identity")
+
+# PLOT 2: structural category distribution
+
+df <- df_summary
+df$total <- NULL
+df$unique_tag <- NULL
+df <- df %>% 
+  pivot_longer(!"ID", "SC")
+
+p2 <- ggplot(df, aes(fill=SC, y=value, x=ID)) +
+  geom_bar(position = "fill", stat = "identity")
+
+# PLOT 3: splice junction distribution for each SC
+
+#!!!!!!!!!!! ADD THESE PLOTS
+
+# PLOT 4: distance to TSS
+
+sample <- c()
+dist <- c()
+for (i in 1:length(f_in)){
+  data.class <- f_in[[i]][[1]]
+  cond <- which(data.class$structural_category == "full-splice_match")
+  x <- data.class[cond, "diff_to_TSS"]
+  sample <- c(
+    sample,
+    rep(names(f_in)[i], times=length(x))
+  )
+  dist <- c(
+    dist,
+    x
+  )
+}
+TSS.dist.FSM <- data.frame(sample, dist)
+p4.1 <- ggplot(TSS.dist.FSM, aes(x=sample, y=log2(dist))) + 
+  geom_boxplot(aes(col = sample))
+
+sample <- c()
+dist <- c()
+for (i in 1:length(f_in)){
+  data.class <- f_in[[i]][[1]]
+  cond <- which(data.class$structural_category == "incomplete-splice_match")
+  x <- data.class[cond, "diff_to_TSS"]
+  sample <- c(
+    sample,
+    rep(names(f_in)[i], times=length(x))
+  )
+  dist <- c(
+    dist,
+    x
+  )
+}
+TSS.dist.ISM <- data.frame(sample, dist)
+p4.2 <- ggplot(TSS.dist.ISM, aes(x=sample, y=log2(dist))) + 
+  geom_boxplot(aes(col = sample))
+ 
+
+# PLOT5: distance to TTS
+
+sample <- c()
+dist <- c()
+for (i in 1:length(f_in)){
+  data.class <- f_in[[i]][[1]]
+  cond <- which(data.class$structural_category == "full-splice_match")
+  x <- data.class[cond, "diff_to_TTS"]
+  sample <- c(
+    sample,
+    rep(names(f_in)[i], times=length(x))
+  )
+  dist <- c(
+    dist,
+    x
+  )
+}
+TSS.dist.FSM <- data.frame(sample, dist)
+p5.1 <- ggplot(TSS.dist.FSM, aes(x=sample, y=log2(dist))) + 
+  geom_boxplot(aes(col = sample))
+
+sample <- c()
+dist <- c()
+for (i in 1:length(f_in)){
+  data.class <- f_in[[i]][[1]]
+  cond <- which(data.class$structural_category == "incomplete-splice_match")
+  x <- data.class[cond, "diff_to_TTS"]
+  sample <- c(
+    sample,
+    rep(names(f_in)[i], times=length(x))
+  )
+  dist <- c(
+    dist,
+    x
+  )
+}
+TSS.dist.ISM <- data.frame(sample, dist)
+p5.2 <- ggplot(TSS.dist.ISM, aes(x=sample, y=log2(dist))) + 
+  geom_boxplot(aes(col = sample))
+
+# PLOT 6: distance to CAGE peak
+
+sample <- c()
+dist <- c()
+for (i in 1:length(f_in)){
+  data.class <- f_in[[i]][[1]]
+  cond <- which(data.class$structural_category == "full-splice_match")
+  x <- data.class[cond, "diff_to_TSS"]
+  sample <- c(
+    sample,
+    rep(names(f_in)[i], times=length(x))
+  )
+  dist <- c(
+    dist,
+    x
+  )
+}
+TSS.dist.FSM <- data.frame(sample, dist)
+p6.1 <- ggplot(TSS.dist.FSM, aes(x=sample, y=log2(dist))) + 
+  geom_boxplot(aes(col = sample))
+
+sample <- c()
+dist <- c()
+for (i in 1:length(f_in)){
+  data.class <- f_in[[i]][[1]]
+  cond <- which(data.class$structural_category == "incomplete-splice_match")
+  x <- data.class[cond, "dist_to_cage_peak"]
+  sample <- c(
+    sample,
+    rep(names(f_in)[i], times=length(x))
+  )
+  dist <- c(
+    dist,
+    x
+  )
+}
+TSS.dist.ISM <- data.frame(sample, dist)
+p6.2 <- ggplot(TSS.dist.ISM, aes(x=sample, y=log2(dist))) + 
+  geom_boxplot(aes(col = sample))
+
+# PLOT 7: bad quality features
+# PLOT 7.1: RT-switching
+FSM <- c()
+NIC <- c()
+NNC <- c()
+
+for (i in 1:length(f_in)){
+  data.class <- f_in[[i]][[1]]
+  df <- group_by(data.class, structural_category, RTS_stage) %>% dplyr::summarise(count=dplyr::n(), .groups = 'drop')
+  FSM.match <- df$count[which(df$structural_category == "full-splice_match")]
+  FSM <- c(FSM, ((FSM.match[2]/(FSM.match[1]+FSM.match[2]))*100))
+  
+  NIC.match <- df$count[which(df$structural_category == "novel_in_catalog")]
+  NIC <- c(NIC, ((NIC.match[2]/(NIC.match[1]+NIC.match[2]))*100))
+  
+  NNC.match <- df$count[which(df$structural_category == "novel_not_in_catalog")]
+  NNC <- c(NNC, ((NNC.match[2]/(NNC.match[1]+NNC.match[2]))*100))
+}
+
+sample <- names(f_in)
+FSM <- data.frame(sample, FSM)
+NIC <- data.frame(sample, NIC)
+NNC <- data.frame(sample, NNC)
+
+p7.1.1 <- ggplot(FSM, aes(x=sample, y=FSM)) + geom_bar(color="blue",fill=rgb(0.1,0.4,0.5,0.7), stat="identity")
+p7.1.2 <- ggplot(NIC, aes(x=sample, y=NIC)) + geom_bar(color="blue", fill=rgb(0.1,0.4,0.5,0.7),stat="identity")
+p7.1.3 <- ggplot(NNC, aes(x=sample, y=NNC)) + geom_bar(color="blue", fill=rgb(0.1,0.4,0.5,0.7),stat="identity")
+
+# p8: good quality features
+
+# PLOT 9: Venn diagrams
+
+l <- list()
+for (i in 3:ncol(res[[2]])){
+  l[[i-2]] <- res[[2]][,i]
+}
+names(l) <- colnames(res[[2]])[3:ncol(res[[2]])]
+
+p9 <- ggvenn(
+  l, 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#CD534CFF"),
+  stroke_size = 0.5, set_name_size = 4
+) + ggtitle("All isoforms") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# PLOT 10: UpSet plot
+
+p10 <-
+  UpSetR::upset(
+    UpSetR::fromList(l),
+    order.by = "freq",
+    mainbar.y.label = "Isoform Intersections",
+    sets.x.label = "Isoforms Per Sample"
+  )
+
+# PLOT 11: Venn diagrams for SC
+
+p11 <- list()
+contador <- 1
+for (i in 1:length(res[[2]])) {
+  a <- res[[2]][res[[2]]$structural_category == str_cat[i], names(res[[2]])[3:length(names(res[[2]]))]]
+  l <- list()
+  for (j in 1:ncol(a)) {
+    l[[j]] <- na.omit(a[,j])
+  }
+  names(l) <- names(a)
+  p11[[contador]] <- ggvenn(
+    l, 
+    fill_color = c("#0073C2FF", "#EFC000FF", "#CD534CFF"),
+    stroke_size = 0.5, set_name_size = 4
+  ) + ggtitle(str_cat[contador]) +
+    theme(plot.title = element_text(hjust = 0.5))
+  contador <- contador + 1
+}
+
+# PLOT 12: UpSet plots for SC
+
+p12 <- list()
+for (i in 1:length(res[[2]])) {
+  a <- res[[2]][res[[2]]$structural_category == str_cat[i], names(res[[2]])[3:length(names(res[[2]]))]]
+  l <- list()
+  for (j in 1:ncol(a)) {
+    l[[j]] <- na.omit(a[,j])
+  }
+  names(l) <- names(a)
+  
+  p12[[i]] <-
+    UpSetR::upset(
+      UpSetR::fromList(l),
+      order.by = "freq",
+      mainbar.y.label = "Isoform Intersections",
+      sets.x.label = "Isoforms Per Sample"
+    )
+}
+
+# PLOT 13: TSS standard deviation
+
+a <- bind_rows(res$classifications, .id = "pipeline")
+x <- colnames(a)[6]
+p13 <- ggplot(a, aes(log2(a[,x]))) +
+  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",x,")"))
+
+# PLOT 14: TTS standard deviation
+
+x <- colnames(a)[7]
+p14 <- ggplot(a, aes(log2(a[,x]))) +
+  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",x,")"))
+
+# p15: TSS entropy
+
+x <- colnames(a)[8]
+p15 <- ggplot(a, aes(log2(a[,x]))) +
+  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",x,")"))
+
+# PLOT 16: TTS entropy
+
+x <- colnames(a)[9]
+p16 <- ggplot(a, aes(log2(a[,x]))) +
+  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",x,")"))
+
+
 # -------------------- Output report
 
 Sys.setenv(RSTUDIO_PANDOC = "/usr/lib/rstudio/bin/pandoc")

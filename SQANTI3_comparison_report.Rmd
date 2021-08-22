@@ -17,47 +17,109 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache = FALSE, echo = FA
 venn <- FALSE
 ```
 
-<!-- Run -->
-
-```{r}
-res <- compareTranscriptomes(f_in)
-```
-
 <!-- Summary generation -->
 
 ## Summary table
 
 ```{r}
-str_cat <- c("antisense", "full-splice_match", "fusion", "genic", "incomplete-splice_match", "intergenic", "novel_in_catalog", "novel_not_in_catalog")
-df_summary <- data.frame(ID = names(res[[2]][3:ncol(res[[2]])]))
-n <- c()
-for (i in res[[1]]) {
-  n <- c(n, nrow(i))
-}
-df_summary$n_total <- n
-
-for (i in str_cat) {
-  n <- c()
-  for (j in res[[1]]) {
-    n <- c(n, nrow(j[j$structural_category == i,]))
-  }
-  df_summary[,i] <- n
-}
-
-DT::datatable(df_summary,
-              extensions = "Buttons",
-              options = list(
-                  order = list(list(5, "asc"),list(1, "desc")),
-                  dom = 'Bfrtip',
-                  buttons = c('copy', 'csv', 'pdf', 'print')
-              ),
-              escape = FALSE,
-              caption = "Table 1. Summary from SQANTI3 output comparison")
+t1
 ```
 
 <!-- Plot generation -->
 
-## Complete comparison {.tabset .tabset-pills}
+## Gene characterization {.tabset .tabset-fade}
+
+### Isoforms per gene
+
+```{r}
+p1.1
+```
+
+### Exon structure
+
+```{r}
+p1.2
+```
+
+
+## Structural category distribution
+
+```{r}
+p2
+```
+
+<!-- ADD ## Splice Junction Characterization -->
+
+## TTS and TSS distances {.tabset .tabset-fade}
+
+### Distance to TSS {.tabset .tabset-fade .tabset-dropdown}
+
+#### FSM
+
+```{r}
+p4.1
+```
+
+#### ISM
+
+```{r}
+p4.2
+```
+
+### Distance to TTS {.tabset .tabset-fade .tabset-dropdown}
+
+#### FSM
+
+```{r}
+p5.1
+```
+
+#### ISM
+
+```{r}
+p5.2
+```
+
+## CAGE peak distance {.tabset .tabset-fade .tabset-dropdown}
+
+### FSM
+
+```{r}
+p6.1
+```
+
+### ISM
+
+```{r}
+p6.2
+```
+
+## Features of bad quality {.tabset .tabset-fade}
+
+### RT-switching {.tabset .tabset-fade .tabset-dropdown}
+
+#### FSM
+
+```{r}
+p7.1.1
+```
+
+#### NIC
+
+```{r}
+p7.1.2
+```
+
+#### NNC
+
+```{r}
+p7.1.3
+```
+
+
+<!-- ADD ## Features of good quality -->
+
+## Complete comparison {.tabset .tabset-fade}
 
 <!-- Print or not Venn Diagrams -->
 
@@ -69,43 +131,16 @@ if (length(f_in) < 4) {
 ```
 
 ```{r, eval=venn}
-l <- list()
-for (i in 3:ncol(res[[2]])){
-  l[[i-2]] <- res[[2]][,i]
-}
-names(l) <- colnames(res[[2]])[3:ncol(res[[2]])]
-
-print(ggvenn(
-  l, 
-  fill_color = c("#0073C2FF", "#EFC000FF", "#CD534CFF"),
-  stroke_size = 0.5, set_name_size = 4
-  ) + ggtitle("All isoforms") +
-    theme(plot.title = element_text(hjust = 0.5)))
+p9
 ```
 
 ### UpSet plot
 
 ```{r}
-l <- list()
-for (i in 3:ncol(res[[2]])){
-  l[[i-2]] <- res[[2]][,i]
-}
-names(l) <- colnames(res[[2]])[3:ncol(res[[2]])]
-
-a <- UpSetR::upset(UpSetR::fromList(l), order.by = "freq", mainbar.y.label = "Isoform Intersections", sets.x.label = "Isoforms Per Sample")
-print(a)
+p10
 grid.text("All isoforms",x = 0.65, y=0.95, gp=gpar(fontsize=20))
 ```
 
-### Standard deviation and Entropy
-
-```{r}
-a <- bind_rows(res$classifications, .id = "pipeline")
-for (i in colnames(a[6:9])){
-  print(ggplot(a, aes(log2(a[,i]))) +
-  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",i,")")))
-}
-```
 
 <!-- By structural category -->
 
@@ -121,59 +156,56 @@ if (length(f_in) < 4) {
 ```
 
 ```{r, eval=venn, results='asis'}
-contador <- 1
-for (i in 1:length(res[[2]])) {
-  cat("\n\n#### ", str_cat[contador],"\n")
-  
-  a <- res[[2]][res[[2]]$structural_category == str_cat[i], names(res[[2]])[3:length(names(res[[2]]))]]
-  l <- list()
-  for (j in 1:ncol(a)) {
-    l[[j]] <- na.omit(a[,j])
-  }
-  names(l) <- names(a)
-  print(ggvenn(
-  l, 
-  fill_color = c("#0073C2FF", "#EFC000FF", "#CD534CFF"),
-  stroke_size = 0.5, set_name_size = 4
-  ) + ggtitle(str_cat[contador]) +
-    theme(plot.title = element_text(hjust = 0.5)))
-  contador <- contador + 1
+for (i in 1:length(p11)){
+  cat("\n\n#### ", str_cat[i],"\n")
+  print(p11[i])
 }
 ```
 
-### UpSet plot {.tabset .tabset-pills}
+### UpSet plot {.tabset .tabset-fade}
 
 ```{r, results='asis'}
-for (i in 1:length(res[[2]])) {
+for (i in 1:length(p12)){
   cat("\n\n#### ", str_cat[i],"\n")
-  
-  a <- res[[2]][res[[2]]$structural_category == str_cat[i], names(res[[2]])[3:length(names(res[[2]]))]]
-  l <- list()
-  for (j in 1:ncol(a)) {
-    l[[j]] <- na.omit(a[,j])
-  }
-  names(l) <- names(a)
-  
-  a <- UpSetR::upset(UpSetR::fromList(l), order.by = "freq", mainbar.y.label = "Isoform Intersections", sets.x.label = "Isoforms Per Sample")
-  print(a)
+  print(p12[i])
   grid.text(str_cat[i],x = 0.65, y=0.95, gp=gpar(fontsize=20))
 }
+```
+
+## Standard deviation and Entropy {.tabset .tabset-fade}
+
+### Standard deviation {.tabset .tabset-fade .tabset-dropdown}
+
+#### TSS
+
+```{r}
+p13
+```
+
+#### TTS
+
+```{r}
+p14
+```
+
+### Entropy {.tabset .tabset-fade .tabset-dropdown}
+
+#### TSS
+
+```{r}
+p15
+```
+
+#### TTS
+
+```{r}
+p16
 ```
 
 ## Presence/Ausence table
 
 ```{r}
-df.PA <- res[[3]]
-df.PA$TAGS <- lapply(df.PA$TAGS, iso2url)
-DT::datatable(df.PA,
-              escape = FALSE,
-              options = list(
-                  pageLength = 10,
-                  autoWidth = TRUE,
-                  columnDefs = list(list(width = '10px', targets = "_all"))
-              ),
-              rownames = FALSE,
-              caption = "Table 2. Presence/Ausence of all the isoform models")
+t2
 ```
 
 ## SessionInfo
