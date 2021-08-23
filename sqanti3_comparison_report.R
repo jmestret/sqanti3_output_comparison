@@ -9,12 +9,6 @@
 # Author: Jorge Martinez Tomas & Alejandro Paniagua
 # Last modified: 18/08/2021 by Jorge Martinez
 
-# Arguments
-# $ sqanti3_comparison_report.R dir_in report_name dir_out
-# dir_in: Name of the directory containing the SQANTI3 output files (classification and junction files are required)
-# report_name: Output name for the HTML report (without extension)
-# dir_out: Output directory for the report and CSV file (working directory as default)
-
 # -------------------- Argument parser
 
 library(optparse)
@@ -42,7 +36,7 @@ output_directory <- opt$outdir
 output_name <- opt$name
 
 if (is.null(directory)) {
-  stop("You must supply at least the -d argument (directory containing classification and junctions files)")
+  stop("At least one argument must be supplied.\nThe -d argument is required (directory containing classification and junctions files)")
 }
   
 
@@ -57,20 +51,11 @@ library(rmarkdown)
 library(tidyverse)
 library(UpSetR)
 
-# -------------------- Load data
 
-# Input: Name of a directory with all classification and juntions files from
-# the runs to compare
-#
-# Example:
-# $ ls ~/home/dir_in
-# sample1_classification.txt sample1_junctions.txt
-# sample2_classification.txt sample2_junctions.txt
-# sample3_classification.txt sample3_junctions.txt
+# -------------------- Load data
 
 dir_in <- paste(getwd(), directory, sep="/")
 
-#!!!!!!! Find better implementation (probably with tidyverse)
 class_in <-
   list.files(dir_in,
              pattern = "*_classification.txt",
@@ -83,7 +68,7 @@ junct_in <-
              full.names = TRUE)
 
 if (length(class_in) != length(junct_in)){
-  stop("ERROR: There are different numbers of classification and junction files in the directory")
+  stop("ERROR: There is a different number of classification and junction files in the directory")
 } else if (length(class_in) == 0){
   stop(paste0("ERROR: No classification and junction files were found in the directory ", dir_in))
 }
@@ -103,7 +88,7 @@ for (i in 1:length(class_in)) {
 # -------------------- Functions
 
 # CREATE TAGS
-#TAG structure: Chr_start_end_star_end
+# Builds isoform ids (tags) with the following structure: Chr_strand_start_end
 isoformTags <- function(junctions_file) {
   df <- junctions_file[, c("isoform", "chrom", "strand")] # df with isoforms in *junctions.txt
   dt <- data.table::data.table(df)
@@ -119,8 +104,8 @@ isoformTags <- function(junctions_file) {
 
 
 # DELETE MONOEXONS
+# Deletes monoexons and transcripts from rare chromosomes
 filter_monoexon <- function(class_file){
-  # Deletes monoexons and transcripts from rare chromosomes
   valid_chrom <- c(paste0("chr", 1:22), paste0("chr", c("X","Y")), paste0("SIRV", 1:7))
   
   filtered_classification <- class_file[class_file$exons > 1 &
@@ -138,6 +123,7 @@ swapcoord <- function(dfclass){
   return(dfclass)
 }
 
+# REVERSE SWAP
 reverseswap <- function(class_file) {
   class_file <- swapcoord(class_file)
   sdtts <- class_file$sdTSS[class_file$strand == "-"]
@@ -171,6 +157,7 @@ uniquetag <- function(class_file) {
   return(dt.out[order(dt.out$tags, dt.out$structural_category),])
 }
 
+# ADD THE SC TO THE TAG
 addSC <- function(class_file){
   str_cat <- c("full-splice_match", "incomplete-splice_match", "novel_in_catalog", "novel_not_in_catalog")
   shortSC <- c("FSM", "ISM", "NIC", "NNC")
@@ -186,7 +173,7 @@ addSC <- function(class_file){
 }
 
 
-#  COMPARE TAGS
+#  COMPARE TAGS | PRESENCE AUSENCE
 multipleComparison <- function(l_class){
   a <- c(rbind(names(l_class), paste0(names(l_class), "SC")))
   
@@ -199,16 +186,13 @@ multipleComparison <- function(l_class){
 
 
 # FINAL COMPARISON FUNCTION
+# Given a list of pairs of classification and junction files
+# generates a data.frame with all the common and unique transcripts
 compareTranscriptomes <- function(l_iso){
-  # Given a list of pairs of classification and junction files
-  # generates a data.frame with all the common and unique transcripts
-  
   # Filter monoexon, add tag column and aggregate
   n <- names(l_iso)
   l_class <- list()
   for ( i in 1:length(l_iso)) {
-
-    
     class.filtered <- filter_monoexon(l_iso[[i]][[1]]) # delete monoexons
     
     tags <- isoformTags(l_iso[[i]][[2]]) # build tags
@@ -241,8 +225,10 @@ compareTranscriptomes <- function(l_iso){
   return(output)
 }
 
-# ISOFORM TO GENOME BROWSER
 
+# -------------------- Output functions
+
+# ISOFORM TO GENOME BROWSER
 iso2url <- function(id){
   if (id != "NA") {
     id.split <- str_split(id,"_")
@@ -260,59 +246,60 @@ iso2url <- function(id){
 
 
 # -------------------- 
-# --------------------  RUN COMPARISON
-res <- compareTranscriptomes(f_in)
+# --------------------  Unique tag comparison
 
+res <- try({
+  compareTranscriptomes(f_in)
+}, silent = TRUE)
 
-# -------------------- Table and Plot generation
+if (class(res) == "try-error"){
+  print("ERROR: An error has ocurred during the comparison. A partial report will be generated. Here's the original error message:")
+  print(geterrmessage())
+  print(res)
+}
 
-# -------------------- 
-# -------------------- 
-# TABLE INDEX
-# t1: summary table
-# t2: presence/ausence table
+# --------------------
+# -------------------- Basic comparison with classification files
 
-# -------------------- 
-# -------------------- 
-# PLOT INDEX
-# p1: gene characterization
-#   p1.1: isoforms per gene
-#   p1.2: exon structure
-# p2: structural category distribution
-# p3: splice junction distribution for each SC
-# p4: distance to TSS
-# p5: distance to TTS
-# p6: distance to CAGE peak
-# p7: bad quality features
-# p8: good quality features
-# p9: Venn diagrams 
-# p10: UpSet plot
-# p11: Venn diagrams for SC
-# p12: UpSet plot for SC
-# p13: TSS standard deviation
-# p14: TTS standard deviation
-# p15: TSS entropy
-# p16: TTS entropy
+##*****  Vector of structural categories
 
-# -------------------- 
-# TABLE 1: summary table
+str_cat <- c("full-splice_match", "incomplete-splice_match", "novel_in_catalog", "novel_not_in_catalog", "antisense", "fusion", "genic", "intergenic")
 
-str_cat <- c("antisense", "full-splice_match", "fusion", "genic", "incomplete-splice_match", "intergenic", "novel_in_catalog", "novel_not_in_catalog")
-df_summary <- data.frame(ID = names(res[[2]][3:ncol(res[[2]])]))
+##***** Generates dataframe with a summary of the SQANTI3 classification files
+
+df_summary.1 <- data.frame(ID = names(f_in))
 
 # Count total isoform from SQANTI3
 n <- c()
 for (i in f_in) {
   n <- c(n, nrow(i[[1]]))
 }
-df_summary$total <- n
+df_summary.1$total <- n
+
+# Count isoforms for each structural category
+for (i in str_cat) {
+  n <- c()
+  for (j in f_in) {
+    k <- j[[1]]
+    n <- c(n, nrow(k[k$structural_category == i,]))
+  }
+  df_summary.1[,i] <- n
+}
+
+colnames(df_summary.1) <- 
+  c("ID","total", "FSM", "ISM", "NIC", "NNC", "antisense", "fusion", "genic", "intergenic")
+
+
+##***** Generates dataframe with a summary of the unique tag comparison
+
+df_summary.2 <- data.frame(ID = names(res[[2]][3:ncol(res[[2]])]))
 
 # Count unique tags
 n <- c()
 for (i in res[[1]]) {
   n <- c(n, nrow(i))
 }
-df_summary$uniq_id <- n
+df_summary.2$uniq_id <- n
 
 # Count unique tags for each category
 for (i in str_cat) {
@@ -320,39 +307,20 @@ for (i in str_cat) {
   for (j in res[[1]]) {
     n <- c(n, nrow(j[j$structural_category == i,]))
   }
-  df_summary[,i] <- n
+  df_summary.2[,i] <- n
 }
 
-colnames(df_summary) <- 
-  c("ID","total", "unique_tag","antisense", "FSM", "fusion", "genic", "ISM", "intergenic", "NIC", "NNC")
+colnames(df_summary.2) <- 
+  c("ID","tags", "FSM", "ISM", "NIC", "NNC", "antisense", "fusion", "genic", "intergenic")
 
-t1 <- DT::datatable(df_summary,
-              extensions = "Buttons",
-              options = list(
-                order = list(list(5, "asc"),list(1, "desc")),
-                dom = 'Bfrtip',
-                buttons = c('copy', 'csv', 'pdf', 'print')
-              ),
-              escape = FALSE,
-              caption = "Table 1. Summary from SQANTI3 output comparison")
 
-# TABLE 2: presence/ausence isoforms
+##***** Add GenomeBrowser URL to the P/A table
 
 df.PA <- res[[3]]
 df.PA$TAGS <- lapply(df.PA$TAGS, iso2url)
-t2 <- DT::datatable(df.PA,
-              escape = FALSE,
-              options = list(
-                pageLength = 10,
-                autoWidth = TRUE,
-                columnDefs = list(list(width = '10px', targets = "_all"))
-              ),
-              rownames = FALSE,
-              caption = "Table 2. Presence/Ausence of all the isoform models")
 
-# -------------------- 
-# PLOT 1: gene characterization
-# PLOT 1.1: isoforms per gene
+
+##***** Counts per gene and exon structure
 
 countpergene <- c()
 exonstructure <- c()
@@ -399,169 +367,57 @@ for (data in f_in){
     sum(data.class$novelGene == "Annotated Genes" & data.class$exonCat == "Multi-Exon")
     
   )
-  
-  
 }
 
 sample <- c(rep(names(f_in), each=4))
 number <- rep(c("1","2-3","4-5", ">=6"), times=length(f_in))
 isoPerGene <- data.frame(sample, number, countpergene)
 
-p1.1 <- ggplot(isoPerGene, aes(fill=number, y=countpergene, x=sample)) +
-  geom_bar(position = "fill", stat = "identity")
-
-
-
-# PLOT 1.2: exon structure
-
 category <- rep(c("Novel-Mono", "Novel-Multi", "Annotated-Mono", "Annotated-Multi"), times=length(f_in))
 exonstructure <- data.frame(sample, category, exonstructure)
 
-p1.2 <- ggplot(exonstructure, aes(fill=category, y=exonstructure, x=sample)) +
-  geom_bar(position = "fill", stat = "identity")
 
-# PLOT 2: structural category distribution
+##***** Summary dataframe pivoted
 
-df <- df_summary
-df$total <- NULL
-df$unique_tag <- NULL
-df <- df %>% 
+df_SC <- df_summary.1
+df_SC$total <- NULL
+df_SC <- df_SC %>% 
   pivot_longer(!"ID", "SC")
 
-p2 <- ggplot(df, aes(fill=SC, y=value, x=ID)) +
-  geom_bar(position = "fill", stat = "identity")
+##***** Distance to TSS, TTS and CAGE peak
 
-# PLOT 3: splice junction distribution for each SC
-
-#!!!!!!!!!!! ADD THESE PLOTS
-
-# PLOT 4: distance to TSS
-
-sample <- c()
-dist <- c()
-for (i in 1:length(f_in)){
-  data.class <- f_in[[i]][[1]]
-  cond <- which(data.class$structural_category == "full-splice_match")
-  x <- data.class[cond, "diff_to_TSS"]
-  sample <- c(
-    sample,
-    rep(names(f_in)[i], times=length(x))
-  )
-  dist <- c(
-    dist,
-    x
-  )
+dist.list <- list()
+dist.msr <- c("diff_to_TSS", "diff_to_TTS", "dist_to_cage_peak")
+dist.SC <- c("full-splice_match", "incomplete-splice_match")
+contador <- 1
+for (i in dist.msr){
+  for (j in dist.SC){
+    sample <- c()
+    dist <- c()
+    for (k in 1:length(f_in)){
+      data.class <- f_in[[k]][[1]]
+      cond <- which(data.class$structural_category == j)
+      x <- data.class[cond, i]
+      sample <- c(
+        sample,
+        rep(names(f_in)[k], times=length(x))
+      )
+      dist <- c(
+        dist,
+        x
+      )
+    }
+    dist.list[[contador]] <- data.frame(sample, dist)
+    names(dist.list)[length(dist.list)] <- paste(i,j,sep="_")
+    contador <- contador + 1
+  }
 }
-TSS.dist.FSM <- data.frame(sample, dist)
-p4.1 <- ggplot(TSS.dist.FSM, aes(x=sample, y=log2(dist))) + 
-  geom_boxplot(aes(col = sample))
 
-sample <- c()
-dist <- c()
-for (i in 1:length(f_in)){
-  data.class <- f_in[[i]][[1]]
-  cond <- which(data.class$structural_category == "incomplete-splice_match")
-  x <- data.class[cond, "diff_to_TSS"]
-  sample <- c(
-    sample,
-    rep(names(f_in)[i], times=length(x))
-  )
-  dist <- c(
-    dist,
-    x
-  )
-}
-TSS.dist.ISM <- data.frame(sample, dist)
-p4.2 <- ggplot(TSS.dist.ISM, aes(x=sample, y=log2(dist))) + 
-  geom_boxplot(aes(col = sample))
- 
+##***** RT-switching
 
-# PLOT5: distance to TTS
-
-sample <- c()
-dist <- c()
-for (i in 1:length(f_in)){
-  data.class <- f_in[[i]][[1]]
-  cond <- which(data.class$structural_category == "full-splice_match")
-  x <- data.class[cond, "diff_to_TTS"]
-  sample <- c(
-    sample,
-    rep(names(f_in)[i], times=length(x))
-  )
-  dist <- c(
-    dist,
-    x
-  )
-}
-TSS.dist.FSM <- data.frame(sample, dist)
-p5.1 <- ggplot(TSS.dist.FSM, aes(x=sample, y=log2(dist))) + 
-  geom_boxplot(aes(col = sample))
-
-sample <- c()
-dist <- c()
-for (i in 1:length(f_in)){
-  data.class <- f_in[[i]][[1]]
-  cond <- which(data.class$structural_category == "incomplete-splice_match")
-  x <- data.class[cond, "diff_to_TTS"]
-  sample <- c(
-    sample,
-    rep(names(f_in)[i], times=length(x))
-  )
-  dist <- c(
-    dist,
-    x
-  )
-}
-TSS.dist.ISM <- data.frame(sample, dist)
-p5.2 <- ggplot(TSS.dist.ISM, aes(x=sample, y=log2(dist))) + 
-  geom_boxplot(aes(col = sample))
-
-# PLOT 6: distance to CAGE peak
-
-sample <- c()
-dist <- c()
-for (i in 1:length(f_in)){
-  data.class <- f_in[[i]][[1]]
-  cond <- which(data.class$structural_category == "full-splice_match")
-  x <- data.class[cond, "diff_to_TSS"]
-  sample <- c(
-    sample,
-    rep(names(f_in)[i], times=length(x))
-  )
-  dist <- c(
-    dist,
-    x
-  )
-}
-TSS.dist.FSM <- data.frame(sample, dist)
-p6.1 <- ggplot(TSS.dist.FSM, aes(x=sample, y=log2(dist))) + 
-  geom_boxplot(aes(col = sample))
-
-sample <- c()
-dist <- c()
-for (i in 1:length(f_in)){
-  data.class <- f_in[[i]][[1]]
-  cond <- which(data.class$structural_category == "incomplete-splice_match")
-  x <- data.class[cond, "dist_to_cage_peak"]
-  sample <- c(
-    sample,
-    rep(names(f_in)[i], times=length(x))
-  )
-  dist <- c(
-    dist,
-    x
-  )
-}
-TSS.dist.ISM <- data.frame(sample, dist)
-p6.2 <- ggplot(TSS.dist.ISM, aes(x=sample, y=log2(dist))) + 
-  geom_boxplot(aes(col = sample))
-
-# PLOT 7: bad quality features
-# PLOT 7.1: RT-switching
 FSM <- c()
 NIC <- c()
 NNC <- c()
-
 for (i in 1:length(f_in)){
   data.class <- f_in[[i]][[1]]
   df <- group_by(data.class, structural_category, RTS_stage) %>% dplyr::summarise(count=dplyr::n(), .groups = 'drop')
@@ -576,17 +432,11 @@ for (i in 1:length(f_in)){
 }
 
 sample <- names(f_in)
-FSM <- data.frame(sample, FSM)
-NIC <- data.frame(sample, NIC)
-NNC <- data.frame(sample, NNC)
+FSM.RT <- data.frame(sample, FSM)
+NIC.RT <- data.frame(sample, NIC)
+NNC.RT <- data.frame(sample, NNC)
 
-p7.1.1 <- ggplot(FSM, aes(x=sample, y=FSM)) + geom_bar(color="blue",fill=rgb(0.1,0.4,0.5,0.7), stat="identity")
-p7.1.2 <- ggplot(NIC, aes(x=sample, y=NIC)) + geom_bar(color="blue", fill=rgb(0.1,0.4,0.5,0.7),stat="identity")
-p7.1.3 <- ggplot(NNC, aes(x=sample, y=NNC)) + geom_bar(color="blue", fill=rgb(0.1,0.4,0.5,0.7),stat="identity")
-
-# p8: good quality features
-
-# PLOT 9: Venn diagrams
+##***** List of unique tags for each sample
 
 l <- list()
 for (i in 3:ncol(res[[2]])){
@@ -594,9 +444,160 @@ for (i in 3:ncol(res[[2]])){
 }
 names(l) <- colnames(res[[2]])[3:ncol(res[[2]])]
 
+
+# -------------------- Table and Plot generation
+
+# -------------------- 
+# -------------------- 
+# TABLE INDEX
+# t1: summary table
+# t2: presence/ausence table
+
+# -------------------- 
+# -------------------- 
+# PLOT INDEX
+# p1: gene characterization
+#   p1.1: isoforms per gene
+#   p1.2: exon structure
+# p2: structural category distribution
+# p3: splice junction distribution for each SC
+# p4: distance to TSS
+# p5: distance to TTS
+# p6: distance to CAGE peak
+# p7: bad quality features
+# p8: good quality features
+# p9: Venn diagrams 
+# p10: UpSet plot
+# p11: Venn diagrams for SC
+# p12: UpSet plot for SC
+# p13: TSS standard deviation
+# p14: TTS standard deviation
+# p15: TSS entropy
+# p16: TTS entropy
+
+# -------------------- Global plot parameters
+# COPY-PASTE FROM SQANTI3 REPORT
+
+myPalette = c("#6BAED6","#FC8D59","#78C679","#EE6A50","#969696","#66C2A4", "goldenrod1", "darksalmon", "#41B6C4","tomato3", "#FE9929")
+
+mytheme <- theme_classic(base_family = "Helvetica") +
+  theme(axis.line.x = element_line(color="black", size = 0.4),
+        axis.line.y = element_line(color="black", size = 0.4)) +
+  theme(axis.title.x = element_text(size=13),
+        axis.text.x  = element_text(size=12),
+        axis.title.y = element_text(size=13),
+        axis.text.y  = element_text(vjust=0.5, size=12) ) +
+  theme(legend.text = element_text(size = 11), legend.title = element_text(size=12), legend.key.size = unit(0.5, "cm")) +
+  theme(plot.title = element_text(lineheight=.4, size=15, hjust = 0.5)) +
+  theme(plot.margin = unit(c(2.5,1,1,1), "cm"))
+
+# -------------------- 
+# TABLE 1: summary table
+
+t1.1 <- DT::datatable(df_summary.1,
+              extensions = "Buttons",
+              options = list(
+                order = list(list(5, "asc"),list(1, "desc")),
+                dom = 'Bfrtip',
+                buttons = c('copy', 'csv', 'pdf', 'print')
+              ),
+              escape = FALSE,
+              caption = "Table 1. Summary from SQANTI3 output comparison")
+
+t1.2 <- DT::datatable(df_summary.2,
+                      extensions = "Buttons",
+                      options = list(
+                        order = list(list(5, "asc"),list(1, "desc")),
+                        dom = 'Bfrtip',
+                        buttons = c('copy', 'csv', 'pdf', 'print')
+                      ),
+                      escape = FALSE,
+                      caption = "Table 2. Summary from isoform id (tag) comparison")
+
+# TABLE 2: presence/ausence isoforms
+
+t2 <- DT::datatable(df.PA,
+              escape = FALSE,
+              options = list(
+                pageLength = 10,
+                autoWidth = TRUE,
+                columnDefs = list(list(width = '10px', targets = "_all"))
+              ),
+              rownames = FALSE,
+              caption = "Table 3. Presence/Ausence of all the isoform models")
+
+
+# -------------------- 
+# PLOT 1: gene characterization
+# PLOT 1.1: isoforms per gene
+
+p1.1 <- ggplot(isoPerGene, aes(fill=number, y=countpergene, x=sample)) +
+  geom_bar(position = "fill", stat = "identity") +
+  scale_fill_manual(values = myPalette) + mytheme 
+
+# PLOT 1.2: exon structure
+
+p1.2 <- ggplot(exonstructure, aes(fill=category, y=exonstructure, x=sample)) +
+  geom_bar(position = "fill", stat = "identity") +
+  scale_fill_manual(values = myPalette) + mytheme
+
+# PLOT 2: structural category distribution
+
+p2 <- ggplot(df_SC, aes(fill=SC, y=value, x=ID)) +
+  geom_bar(position = "fill", stat = "identity") +
+  scale_fill_manual(values = myPalette) + mytheme
+
+# PLOT 3: splice junction distribution for each SC
+
+#!!!!!!!!!!! ADD THESE PLOTS
+
+# PLOT 4: distance to TSS
+
+p4.1 <- ggplot(dist.list[[1]], aes(x=sample, y=log2(dist))) + 
+  geom_boxplot(aes(col = sample)) +
+  scale_fill_manual(values = myPalette) + mytheme
+
+p4.2 <- ggplot(dist.list[[2]], aes(x=sample, y=log2(dist))) + 
+  geom_boxplot(aes(col = sample)) +
+  scale_fill_manual(values = myPalette) + mytheme
+
+# PLOT5: distance to TTS
+
+p5.1 <- ggplot(dist.list[[3]], aes(x=sample, y=log2(dist))) + 
+  geom_boxplot(aes(col = sample)) +
+  scale_fill_manual(values = myPalette) + mytheme
+
+p5.2 <- ggplot(dist.list[[4]], aes(x=sample, y=log2(dist))) + 
+  geom_boxplot(aes(col = sample)) +
+  scale_fill_manual(values = myPalette) + mytheme
+
+# PLOT 6: distance to CAGE peak
+
+p6.1 <- ggplot(dist.list[[5]], aes(x=sample, y=log2(dist))) + 
+  geom_boxplot(aes(col = sample)) +
+  scale_fill_manual(values = myPalette) + mytheme
+
+p6.2 <- ggplot(dist.list[[6]], aes(x=sample, y=log2(dist))) + 
+  geom_boxplot(aes(col = sample)) +
+  scale_fill_manual(values = myPalette) + mytheme
+
+# PLOT 7: bad quality features
+# PLOT 7.1: RT-switching
+
+p7.1.1 <- ggplot(FSM.RT, aes(x=sample, y=FSM, fill=sample)) + geom_bar(stat="identity") +
+  scale_fill_manual(values = myPalette) + mytheme
+p7.1.2 <- ggplot(NIC.RT, aes(x=sample, y=NIC)) + geom_bar(color="blue", fill=rgb(0.1,0.4,0.5,0.7),stat="identity") +
+  scale_fill_manual(values = myPalette) + mytheme
+p7.1.3 <- ggplot(NNC.RT, aes(x=sample, y=NNC)) + geom_bar(color="blue", fill=rgb(0.1,0.4,0.5,0.7),stat="identity") +
+  scale_fill_manual(values = myPalette) + mytheme
+
+# p8: good quality features
+
+# PLOT 9: Venn diagrams
+
 p9 <- ggvenn(
   l, 
-  fill_color = c("#0073C2FF", "#EFC000FF", "#CD534CFF"),
+  fill_color = c(myPalette),
   stroke_size = 0.5, set_name_size = 4
 ) + ggtitle("All isoforms") +
   theme(plot.title = element_text(hjust = 0.5))
@@ -608,7 +609,8 @@ p10 <-
     UpSetR::fromList(l),
     order.by = "freq",
     mainbar.y.label = "Isoform Intersections",
-    sets.x.label = "Isoforms Per Sample"
+    sets.x.label = "Isoforms Per Sample",
+    sets.bar.color = myPalette[1:length(l)]
   )
 
 # PLOT 11: Venn diagrams for SC
@@ -624,7 +626,7 @@ for (i in 1:length(res[[2]])) {
   names(l) <- names(a)
   p11[[contador]] <- ggvenn(
     l, 
-    fill_color = c("#0073C2FF", "#EFC000FF", "#CD534CFF"),
+    fill_color = c(myPalette),
     stroke_size = 0.5, set_name_size = 4
   ) + ggtitle(str_cat[contador]) +
     theme(plot.title = element_text(hjust = 0.5))
@@ -647,34 +649,35 @@ for (i in 1:length(res[[2]])) {
       UpSetR::fromList(l),
       order.by = "freq",
       mainbar.y.label = "Isoform Intersections",
-      sets.x.label = "Isoforms Per Sample"
+      sets.x.label = "Isoforms Per Sample",
+      sets.bar.color = myPalette[1:length(l)]
     )
 }
 
 # PLOT 13: TSS standard deviation
 
 a <- bind_rows(res$classifications, .id = "pipeline")
-x <- colnames(a)[6]
-p13 <- ggplot(a, aes(log2(a[,x]))) +
-  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",x,")"))
+p13 <- ggplot(a, aes(log2(a[,colnames(a)[6]]))) +
+  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[6],")")) +
+  scale_fill_manual(values = myPalette) + mytheme
 
 # PLOT 14: TTS standard deviation
 
-x <- colnames(a)[7]
-p14 <- ggplot(a, aes(log2(a[,x]))) +
-  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",x,")"))
+p14 <- ggplot(a, aes(log2(a[,colnames(a)[7]]))) +
+  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[7],")")) +
+  scale_fill_manual(values = myPalette) + mytheme
 
 # p15: TSS entropy
 
-x <- colnames(a)[8]
-p15 <- ggplot(a, aes(log2(a[,x]))) +
-  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",x,")"))
+p15 <- ggplot(a, aes(log2(a[,colnames(a)[8]]))) +
+  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[8],")")) +
+  scale_fill_manual(values = myPalette) + mytheme
 
 # PLOT 16: TTS entropy
 
-x <- colnames(a)[9]
-p16 <- ggplot(a, aes(log2(a[,x]))) +
-  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",x,")"))
+p16 <- ggplot(a, aes(log2(a[,colnames(a)[9]]))) +
+  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[9],")")) +
+  scale_fill_manual(values = myPalette) + mytheme
 
 
 # -------------------- Output report
