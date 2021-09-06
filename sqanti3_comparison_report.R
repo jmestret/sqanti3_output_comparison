@@ -106,6 +106,11 @@ isoformTags <- function(junctions_file) {
 # DELETE MONOEXONS
 # Deletes monoexons and transcripts from rare chromosomes
 filter_monoexon <- function(class_file){
+  filtered_classification <- class_file[class_file$exons > 1, ]
+  filtered_classification[order(filtered_classification$isoform),]
+}
+
+filter_monoexon_sirv <- function(class_file){
   valid_chrom <- c(paste0("chr", 1:22), paste0("chr", c("X","Y")), paste0("SIRV", 1:7))
   
   filtered_classification <- class_file[class_file$exons > 1 &
@@ -157,6 +162,16 @@ uniquetag <- function(class_file) {
   return(dt.out[order(dt.out$tags, dt.out$structural_category),])
 }
 
+uniquetag_simple <- function(class_file) {
+  dt <- data.table::data.table(class_file)
+  dt.out <-
+    dt[, list(
+      isoform = list(isoform)
+    ), by = c("tags", "structural_category")]
+  dt.out <- as.data.frame(dt.out)
+  return(dt.out[order(dt.out$tags, dt.out$structural_category),])
+}
+
 # ADD THE SC TO THE TAG
 addSC <- function(class_file){
   str_cat <- c("full-splice_match", "incomplete-splice_match", "novel_in_catalog", "novel_not_in_catalog")
@@ -189,6 +204,14 @@ multipleComparison <- function(l_class){
 # Given a list of pairs of classification and junction files
 # generates a data.frame with all the common and unique transcripts
 compareTranscriptomes <- function(l_iso){
+  # Check for TSS and TTS genomic coords
+  TSS_TTS_coord <- TRUE
+  for ( i in 1:length(l_iso)){
+    if (!("TSS_genomic_coord" %in% colnames(l_iso[[i]][[1]]))){
+      TSS_TTS_coord <- FALSE
+    }
+  }
+  
   # Filter monoexon, add tag column and aggregate
   n <- names(l_iso)
   l_class <- list()
@@ -196,11 +219,19 @@ compareTranscriptomes <- function(l_iso){
     class.filtered <- filter_monoexon(l_iso[[i]][[1]]) # delete monoexons
     
     tags <- isoformTags(l_iso[[i]][[2]]) # build tags
+    if (length(tags) != nrow(class.filtered)){
+      class.filtered <- filter_monoexon_sirv(l_iso[[i]][[1]])
+    }
     class.filtered[,"tags"] <- tags # add tags
     
-    class.swap <- swapcoord(class.filtered) # swap - strand
-    class.uniquetags <- as.data.frame(uniquetag(class.swap)) # group by tag
-    class.out <- reverseswap(class.uniquetags) # re-swap TSS and TSS - strand
+    if (TSS_TTS_coord){
+      class.swap <- swapcoord(class.filtered) # swap - strand
+      class.uniquetags <- as.data.frame(uniquetag(class.swap)) # group by tag
+      class.out <- reverseswap(class.uniquetags) # re-swap TSS and TSS - strand
+    } else{
+      class.out <- uniquetag_simple(class.filtered) # group by tag
+    }
+    
     class.out <- addSC(class.out)
     l_class[[i]] <- class.out # add to list
   }
@@ -255,11 +286,20 @@ res <- try({
 if (class(res) == "try-error"){
   print("ERROR: An error has ocurred during the comparison. A partial report will be generated. Here's the original error message:")
   print(geterrmessage())
-  print(res)
 }
 
 # --------------------
 # -------------------- Basic comparison with classification files
+
+##*****  Check for TSS and TTS genomic coords
+
+TSS_TTS_coord <- TRUE
+for ( i in 1:length(f_in)){
+  if (!("TSS_genomic_coord" %in% colnames(f_in[[i]][[1]]))){
+    TSS_TTS_coord <- FALSE
+  }
+}
+
 
 ##*****  Vector of structural categories
 
@@ -654,32 +694,32 @@ for (i in 1:length(res[[2]])) {
     )
 }
 
-# PLOT 13: TSS standard deviation
-
-a <- bind_rows(res$classifications, .id = "pipeline")
-p13 <- ggplot(a, aes(log2(a[,colnames(a)[6]]))) +
-  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[6],")")) +
-  scale_fill_manual(values = myPalette) + mytheme
-
-# PLOT 14: TTS standard deviation
-
-p14 <- ggplot(a, aes(log2(a[,colnames(a)[7]]))) +
-  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[7],")")) +
-  scale_fill_manual(values = myPalette) + mytheme
-
-# p15: TSS entropy
-
-p15 <- ggplot(a, aes(log2(a[,colnames(a)[8]]))) +
-  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[8],")")) +
-  scale_fill_manual(values = myPalette) + mytheme
-
-# PLOT 16: TTS entropy
-
-p16 <- ggplot(a, aes(log2(a[,colnames(a)[9]]))) +
-  geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[9],")")) +
-  scale_fill_manual(values = myPalette) + mytheme
-
-
+if (TSS_TTS_coord) {
+  # PLOT 13: TSS standard deviation
+  
+  a <- bind_rows(res$classifications, .id = "pipeline")
+  p13 <- ggplot(a, aes(log2(a[,colnames(a)[6]]))) +
+    geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[6],")")) +
+    scale_fill_manual(values = myPalette) + mytheme
+  
+  # PLOT 14: TTS standard deviation
+  
+  p14 <- ggplot(a, aes(log2(a[,colnames(a)[7]]))) +
+    geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[7],")")) +
+    scale_fill_manual(values = myPalette) + mytheme
+  
+  # p15: TSS entropy
+  
+  p15 <- ggplot(a, aes(log2(a[,colnames(a)[8]]))) +
+    geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[8],")")) +
+    scale_fill_manual(values = myPalette) + mytheme
+  
+  # PLOT 16: TTS entropy
+  
+  p16 <- ggplot(a, aes(log2(a[,colnames(a)[9]]))) +
+    geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[9],")")) +
+    scale_fill_manual(values = myPalette) + mytheme
+}
 # -------------------- Output report
 
 Sys.setenv(RSTUDIO_PANDOC = "/usr/lib/rstudio/bin/pandoc")

@@ -179,34 +179,24 @@ for (i in 1:length(p12)){
 }
 ```
 
-## Standard deviation and Entropy {.tabset .tabset-fade}
+<!-- Print or not TSS and TSS coords stats -->
 
-### Standard deviation {.tabset .tabset-fade .tabset-dropdown}
+```{r,results='asis'}
+if (TSS_TTS_coord == TRUE) {
+  cat("## Standard deviation and Entropy {.tabset .tabset-fade}\n\n") # Header
+  cat("### Standard deviation {.tabset .tabset-fade .tabset-dropdown}\n\n")
+  cat("#### TSS\n\n")
+  p13
+  cat("#### TTS\n\n")
+  p14
+  
+  cat("### Entropy {.tabset .tabset-fade .tabset-dropdown}\n\n")
+  cat("#### TSS\n\n")
+  p15
+  cat("#### TTS\n\n")
+  p16
+}
 
-#### TSS
-
-```{r}
-p13
-```
-
-#### TTS
-
-```{r}
-p14
-```
-
-### Entropy {.tabset .tabset-fade .tabset-dropdown}
-
-#### TSS
-
-```{r}
-p15
-```
-
-#### TTS
-
-```{r}
-p16
 ```
 
 ## Presence/Ausence table
