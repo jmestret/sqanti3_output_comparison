@@ -300,6 +300,11 @@ for ( i in 1:length(f_in)){
   }
 }
 
+##*****  Define max number of samples in plots
+if (length(f_in) < 6){
+  limit <- length(f_in)
+} else {limit <- 5}
+
 
 ##*****  Vector of structural categories
 
@@ -364,7 +369,8 @@ df.PA$TAGS <- lapply(df.PA$TAGS, iso2url)
 
 countpergene <- c()
 exonstructure <- c()
-for (data in f_in){
+for (i in 1:limit){
+  data <- f_in[[i]]
   data.class <- data[[1]]
   
   data.class$novelGene <- "Annotated Genes"
@@ -409,17 +415,17 @@ for (data in f_in){
   )
 }
 
-sample <- c(rep(names(f_in), each=4))
-number <- rep(c("1","2-3","4-5", ">=6"), times=length(f_in))
+sample <- c(rep(names(f_in[1:limit]), each=4))
+number <- rep(c("1","2-3","4-5", ">=6"), times=limit)
 isoPerGene <- data.frame(sample, number, countpergene)
 
-category <- rep(c("Novel-Mono", "Novel-Multi", "Annotated-Mono", "Annotated-Multi"), times=length(f_in))
+category <- rep(c("Novel-Mono", "Novel-Multi", "Annotated-Mono", "Annotated-Multi"), times=limit)
 exonstructure <- data.frame(sample, category, exonstructure)
 
 
 ##***** Summary dataframe pivoted
 
-df_SC <- df_summary.1
+df_SC <- df_summary.1[1:limit,]
 df_SC$total <- NULL
 df_SC <- df_SC %>% 
   pivot_longer(!"ID", "SC")
@@ -434,7 +440,7 @@ for (i in dist.msr){
   for (j in dist.SC){
     sample <- c()
     dist <- c()
-    for (k in 1:length(f_in)){
+    for (k in 1:limit){
       data.class <- f_in[[k]][[1]]
       cond <- which(data.class$structural_category == j)
       x <- data.class[cond, i]
@@ -458,7 +464,7 @@ for (i in dist.msr){
 FSM <- c()
 NIC <- c()
 NNC <- c()
-for (i in 1:length(f_in)){
+for (i in 1:limit){
   data.class <- f_in[[i]][[1]]
   df <- group_by(data.class, structural_category, RTS_stage) %>% dplyr::summarise(count=dplyr::n(), .groups = 'drop')
   FSM.match <- df$count[which(df$structural_category == "full-splice_match")]
@@ -471,7 +477,7 @@ for (i in 1:length(f_in)){
   NNC <- c(NNC, ((NNC.match[2]/(NNC.match[1]+NNC.match[2]))*100))
 }
 
-sample <- names(f_in)
+sample <- names(f_in)[1:limit]
 FSM.RT <- data.frame(sample, FSM)
 NIC.RT <- data.frame(sample, NIC)
 NNC.RT <- data.frame(sample, NNC)
@@ -650,7 +656,8 @@ p10 <-
     order.by = "freq",
     mainbar.y.label = "Isoform Intersections",
     sets.x.label = "Isoforms Per Sample",
-    sets.bar.color = myPalette[1:length(l)]
+    nintersects = 20
+    #sets.bar.color = myPalette[1:length(l)]
   )
 
 # PLOT 11: Venn diagrams for SC
@@ -690,7 +697,8 @@ for (i in 1:length(res[[2]])) {
       order.by = "freq",
       mainbar.y.label = "Isoform Intersections",
       sets.x.label = "Isoforms Per Sample",
-      sets.bar.color = myPalette[1:length(l)]
+      nintersects = 20
+      #sets.bar.color = myPalette[1:length(l)]
     )
 }
 
