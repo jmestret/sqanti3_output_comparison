@@ -150,6 +150,8 @@ uniquetag <- function(class_file) {
   dt <- data.table::data.table(class_file)
   dt.out <-
     dt[, list(
+      TSS_genomic_coord=list(TSS_genomic_coord),
+      TTS_genomic_coord=list(TTS_genomic_coord),
       minTSS = min(TSS_genomic_coord),
       maxTTS = max(TTS_genomic_coord),
       sdTSS = sd(TSS_genomic_coord),
@@ -703,30 +705,127 @@ for (i in 1:length(res[[2]])) {
 }
 
 if (TSS_TTS_coord) {
-  # PLOT 13: TSS standard deviation
+  # Calculate UJC SD and Entropy
+  a <- c("tags", rbind(paste0(names(res$classifications), "TSS"), paste0(names(res$classifications), "TTS")))
+  TSS_TTS_params <- list()
+  for (i in 1:length(res$classifications)){
+    TSS_TTS_params[[i]] <- res$classifications[[i]][,c("tags", "TSS_genomic_coord", "TTS_genomic_coord")]
+  }
+  TSS_TTS_params <- TSS_TTS_params %>% 
+    purrr::reduce(full_join, by="tags") %>% 
+    setNames(a)
+  
+  a <- paste0(names(res$classifications), "TSS")
+  b <- paste0(names(res$classifications), "TTS")
+  allTSS <- TSS_TTS_params[, a]
+  allTTS <- TSS_TTS_params[, b]
+  
+  TSS_TTS_df <- data.frame(tags=TSS_TTS_params$tags)
+  
+  # A) Use all coords
+  TSS_TTS_df$all.SD.TSS <- apply(allTSS, 1, function(x) sd(unlist(x)))
+  TSS_TTS_df$all.Entropy.TSS <- apply(allTSS, 1, function(x) entropy::entropy(unlist(x)))
+  
+  TSS_TTS_df$all.SD.TTS <- apply(allTTS, 1, function(x) sd(unlist(x)))
+  TSS_TTS_df$all.Entropy.TTS <- apply(allTTS, 1, function(x) entropy::entropy(unlist(x)))
+  
+  # B) With max and min value
+  sapplycolumns <- function(data, func){
+    tmp <- list()
+    for (i in 1:ncol(data)){
+      tmp[[names(data)[i]]] <- sapply(data[,i], func)
+    }
+    for (i in 1:length(tmp)){
+      tmp[[i]][tmp[[i]]=="NULL"] <- NA
+    }
+    return(as.data.frame(tmp))
+  }
+  
+  
+  maxTSS <- sapplycolumns(allTSS, max)
+  maxTSS[maxTSS=="-Inf"] <- NA
+  
+  maxTTS <- sapplycolumns(allTTS, max)
+  maxTTS[maxTTS=="-Inf"] <- NA
+  
+  minTSS <- sapplycolumns(allTSS, min)
+  minTSS[minTSS=="Inf"] <- NA
+  
+  minTTS <- sapplycolumns(allTTS, min)
+  minTTS[minTTS=="Inf"] <- NA
+  
+  minmaxTSS <- cbind(minTSS, maxTSS)
+  minmaxTTS <- cbind(minTTS, maxTTS)
+  
+  TSS_TTS_df$minmax.SD.TSS <- apply(minmaxTSS, 1, function(x) sd(unlist(x), na.rm = TRUE))
+  TSS_TTS_df$minmax.Entropy.TSS <- apply(minmaxTSS, 1, function(x) entropy::entropy(na.omit(unlist(x))))
+  
+  TSS_TTS_df$minmax.SD.TTS <- apply(minmaxTTS, 1, function(x) sd(unlist(x),na.rm = TRUE))
+  TSS_TTS_df$minmax.Entropy.TTS <- apply(minmaxTTS, 1, function(x) entropy::entropy(na.omit(unlist(x))))
+  
+  # C) Max value
+  
+  TSS_TTS_df$max.SD.TSS <- apply(minmaxTSS, 1, function(x) sd(unlist(x), na.rm = TRUE))
+  TSS_TTS_df$max.Entropy.TSS <- apply(minmaxTSS, 1, function(x) entropy::entropy(na.omit(unlist(x))))
+  
+  TSS_TTS_df$max.SD.TTS <- apply(maxTTS, 1, function(x) sd(unlist(x),na.rm = TRUE))
+  TSS_TTS_df$max.Entropy.TTS <- apply(maxTTS, 1, function(x) entropy::entropy(na.omit(unlist(x))))
+  
+  # D) Median value
+  
+  #medianTSS <- sapplycolumns(allTSS, median)
+  
+  
+  # PLOT 13: TSS standard deviation per pipeline
   
   a <- bind_rows(res$classifications, .id = "pipeline")
-  p13 <- ggplot(a, aes(log2(a[,colnames(a)[6]]))) +
-    geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[6],")")) +
-    scale_fill_manual(values = myPalette) + mytheme
-  
-  # PLOT 14: TTS standard deviation
-  
-  p14 <- ggplot(a, aes(log2(a[,colnames(a)[7]]))) +
-    geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[7],")")) +
-    scale_fill_manual(values = myPalette) + mytheme
-  
-  # p15: TSS entropy
-  
-  p15 <- ggplot(a, aes(log2(a[,colnames(a)[8]]))) +
+  p13 <- ggplot(a, aes(log2(a[,colnames(a)[8]]))) +
     geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[8],")")) +
     scale_fill_manual(values = myPalette) + mytheme
   
-  # PLOT 16: TTS entropy
+  # PLOT 14: TTS standard deviation per pipeline
   
-  p16 <- ggplot(a, aes(log2(a[,colnames(a)[9]]))) +
+  p14 <- ggplot(a, aes(log2(a[,colnames(a)[9]]))) +
     geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[9],")")) +
     scale_fill_manual(values = myPalette) + mytheme
+  
+  # p15: TSS entropy per pipeline
+  
+  p15 <- ggplot(a, aes(log2(a[,colnames(a)[10]]))) +
+    geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[10],")")) +
+    scale_fill_manual(values = myPalette) + mytheme
+  
+  # PLOT 16: TTS entropy per pipeline
+  
+  p16 <- ggplot(a, aes(log2(a[,colnames(a)[11]]))) +
+    geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[11],")")) +
+    scale_fill_manual(values = myPalette) + mytheme
+  
+  # PLOT 17: TSS and TTS SD and Entropy UJC
+    p17.1 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,2]))) +
+        geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
+        mytheme + ggtitle(names(TSS_TTS_df)[2]) 
+    
+    p17.2 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,3]))) +
+      geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
+      mytheme + ggtitle(names(TSS_TTS_df)[3]) 
+    
+    p17.3 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,4]))) +
+      geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
+      mytheme + ggtitle(names(TSS_TTS_df)[4]) 
+    
+    p17.4 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,5]))) +
+      geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
+      mytheme + ggtitle(names(TSS_TTS_df)[5])
+    
+    p17.5 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,6]))) +
+      geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
+      mytheme + ggtitle(names(TSS_TTS_df)[6]) 
+    
+    p17.6 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,7]))) +
+      geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
+      mytheme + ggtitle(names(TSS_TTS_df)[7])
+    
 }
 # -------------------- Output report
 

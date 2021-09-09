@@ -184,17 +184,29 @@ for (i in 1:length(p12)){
 ```{r,results='asis'}
 if (TSS_TTS_coord == TRUE) {
   cat("## Standard deviation and Entropy {.tabset .tabset-fade}\n\n") # Header
-  cat("### Standard deviation {.tabset .tabset-fade .tabset-dropdown}\n\n")
+  cat("### UJC metrics {.tabset .tabset-fade .tabset-dropdown}\n\n")
+  print(p17.1)
+  print(p17.2)
+  print(p17.3)
+  print(p17.4)
+  print(p17.5)
+  print(p17.6)
+  cat("\n\n")
+  cat("### Standard deviation for each pipeline {.tabset .tabset-fade .tabset-dropdown}\n\n")
   cat("#### TSS\n\n")
-  p13
+  print(p13)
+  cat("\n\n")
   cat("#### TTS\n\n")
-  p14
+  print(p14)
+  cat("\n\n")
   
   cat("### Entropy {.tabset .tabset-fade .tabset-dropdown}\n\n")
   cat("#### TSS\n\n")
-  p15
+  print(p15)
+  cat("\n\n")
   cat("#### TTS\n\n")
-  p16
+  print(p16)
+  cat("\n\n")
 }
 
 ```
