@@ -36,7 +36,7 @@ output_directory <- opt$outdir
 output_name <- opt$name
 
 if (is.null(directory)) {
-  stop("At least one argument must be supplied.\nThe -d argument is required (directory containing classification and junctions files)")
+  stop("\n\nAt least one argument must be supplied.\nThe -d argument is required (directory containing classification and junctions files)")
 }
   
 
@@ -54,7 +54,15 @@ library(UpSetR)
 
 # -------------------- Load data
 
-dir_in <- paste(getwd(), directory, sep="/")
+if (dir.exists(directory)){
+  dir_in <- directory
+} else {
+  dir_in <- paste(getwd(), directory, sep="/")
+  if (!dir.exists(dir_in)){
+    stop(paste0("\n\nCould not find the input directory (", directory, ").\nPlease enter a valid path"))
+  }
+}
+
 
 class_in <-
   list.files(dir_in,
@@ -70,7 +78,7 @@ junct_in <-
 if (length(class_in) != length(junct_in)){
   stop("ERROR: There is a different number of classification and junction files in the directory")
 } else if (length(class_in) == 0){
-  stop(paste0("ERROR: No classification and junction files were found in the directory ", dir_in))
+  stop(paste0("ERROR: No classification and junction files were found in the directory: ", dir_in))
 }
 
 f_in <- list()
