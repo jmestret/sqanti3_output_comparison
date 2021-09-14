@@ -165,7 +165,7 @@ if (length(f_in) < 4) {
 ```{r, eval=venn, results='asis'}
 for (i in 1:length(p11)){
   cat("\n\n#### ", str_cat[i],"\n")
-  grid.arrange(gTree(children = p11[i]), top = str_cat[i])
+  grid.arrange(gTree(children = p11[[i]]), top = str_cat[i])
 }
 ```
 
