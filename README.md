@@ -2,6 +2,36 @@
 
 The script **sqanti3_output_comparison** is a plugin for the SQANTI3 tool ([publication](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5848618/) and [code repository](https://github.com/ConesaLab/SQANTI)). This tool aims to compare different SQANTI3 outputs in order to explore the similarities and differences from different samples, replicates, pipelines or technologies.
 
+## Requirements and Installation
+
+- pandoc
+- R(>=3.4.0)
+- R packages: DT, entropy, gridExtra, knitr, optparse, rmarkdown, tidyverse, UpSetR and VennDiagram 
+
+We recommend using Anaconda to facilitate the installation of the dependencies.
+
+**(0)** First, make sure you have installed Anaconda and it is updated.
+
+```
+export PATH=$HOME/anacondaPy37/bin:$PATH
+conda -V
+conda update conda
+```
+
+**(1)** Download the last release of the plugin from GitHub.
+
+```
+git clone https://github.com/jorgemt98/sqanti3_output_comparison
+```
+
+**(2)** Create and activate the enviroment.
+
+```
+cd sqanti3_output_comparison
+conda env create -f sqanti3_output_comparison.conda_env.yml
+source activate sqanti3_output_comparison.env
+```
+
 ## Running
 
 This tool is divided in 2 scripts:
@@ -11,10 +41,10 @@ This tool is divided in 2 scripts:
 
 ### sqanti3_output_report.R
 
-The input data are the classification and junction (*\*.txt*) files returned by the SQANTI3 quality control software. It is possible to add as many samples as you desire but it is mandatory to introduce for each sample both the classification and junction file with the same prefix and containing the default sufix given by SQANTI3 ( \*\_classification.txt and \*\_junctions.txt). All this files must be in the same directory which relative path will be given as an argument to the script.
+The input data are the classification and junction (*\*.txt*) files returned by the SQANTI3 quality control software. It is possible to add as many samples as you desire but it is mandatory to introduce for each sample both the classification and junction file with the same prefix and containing the default sufix given by SQANTI3 ( \*\_classification.txt and \*\_junctions.txt). All this files must be in the same directory which absolute or relative path will be given as an argument to the script.
 
 ```
-$ ls ~/home/dir_in
+$ ls data
 
 sample1_classification.txt        sample1_junctions.txt
 
@@ -33,6 +63,8 @@ The -d argument in mandatory.
 
 - **-n**: Output name for the HTML report (without extension)
 
+- **-m**: Generate metrics of the TSS and TTS (default FALSE). TRUE if you want to calculate them. 
+
 ```
 #!bash
 $ Rscript sqanti3_comparison_report.R -h
@@ -50,16 +82,20 @@ Options:
 	-n OUTNAME, --name=OUTNAME
 		Output name for the HTML report and CSV file (without extension) [default= comparison_output]
 
+	-m METRICS, --metrics=METRICS
+		Boolean (TRUE or FALSE) if you want to calculate sd and entropy [default= FALSE]
 	-h, --help
 		Show this help message and exit
 ```
 
 #### Example run in bash
 
+Example data can be found in `data/example_data.tar.gz`. Unpack it using `tar -xzf example_data.tar.gz` in `data` folder.
+
 Using only the -d argument:
 
-`Rscript sqanti3_comparison_report.R -d exampledata`
+`Rscript sqanti3_comparison_report.R -d data`
 
 Using all arguments:
 
-`Rscript sqanti3_comparison_report.R -d exampledata -o exampleout -n nameout`
+`Rscript sqanti3_comparison_report.R -d data -o exampleout -n comparison_output -m TRUE`
