@@ -22,7 +22,11 @@ option_list <- list(
               metavar = "DIROUT"),
   make_option(c("-n", "--name"), type = "character", default = "comparison_output",
               help="Output name for the HTML report and CSV file (without extension) [default= %default]",
-              metavar = "OUTNAME")
+              metavar = "OUTNAME"),
+  make_option(c("-m", "--metrics"), type = "character", default = FALSE,
+              help="Boolean (TRUE or FALSE) if you want to calculate sd and entropy [default= %default]",
+              metavar = "METRICS")
+  
 )
 
 opt_parser = OptionParser(
@@ -34,6 +38,7 @@ opt = parse_args(opt_parser)
 directory <- opt$dir
 output_directory <- opt$outdir
 output_name <- opt$name
+metrics <- opt$metrics
 
 if (is.null(directory)) {
   stop("\n\nAt least one argument must be supplied.\nThe -d argument is required (directory containing classification and junctions files)")
@@ -44,12 +49,12 @@ if (is.null(directory)) {
 
 library(DT)
 library(entropy)
-library(ggvenn)
-library(ggplot2)
+library(gridExtra)
 library(knitr)
 library(rmarkdown)
 library(tidyverse)
 library(UpSetR)
+library(VennDiagram)
 
 
 # -------------------- Load data
@@ -496,7 +501,7 @@ NNC.RT <- data.frame(sample, NNC)
 
 l <- list()
 for (i in 3:ncol(res[[2]])){
-  l[[i-2]] <- res[[2]][,i]
+  l[[i-2]] <- na.omit(res[[2]][,i])
 }
 names(l) <- colnames(res[[2]])[3:ncol(res[[2]])]
 
@@ -651,12 +656,10 @@ p7.1.3 <- ggplot(NNC.RT, aes(x=sample, y=NNC)) + geom_bar(color="blue", fill=rgb
 
 # PLOT 9: Venn diagrams
 
-p9 <- ggvenn(
-  l, 
-  fill_color = c(myPalette),
-  stroke_size = 0.5, set_name_size = 4
-) + ggtitle("All isoforms") +
-  theme(plot.title = element_text(hjust = 0.5))
+# To not generate the .log files of VennDiagram
+futile.logger::flog.threshold(futile.logger::ERROR, name = "VennDiagramLogger")
+
+p9 <- venn.diagram(l, filename = NULL, fill = myPalette[1:length(l)])
 
 # PLOT 10: UpSet plot
 
@@ -681,12 +684,7 @@ for (i in 1:length(res[[2]])) {
     l[[j]] <- na.omit(a[,j])
   }
   names(l) <- names(a)
-  p11[[contador]] <- ggvenn(
-    l, 
-    fill_color = c(myPalette),
-    stroke_size = 0.5, set_name_size = 4
-  ) + ggtitle(str_cat[contador]) +
-    theme(plot.title = element_text(hjust = 0.5))
+  p11[[contador]] <- venn.diagram(l, filename = NULL, fill = myPalette[1:length(l)])
   contador <- contador + 1
 }
 
@@ -712,7 +710,7 @@ for (i in 1:length(res[[2]])) {
     )
 }
 
-if (TSS_TTS_coord) {
+if (TSS_TTS_coord == TRUE & metrics == TRUE) {
   # Calculate UJC SD and Entropy
   a <- c("tags", rbind(paste0(names(res$classifications), "TSS"), paste0(names(res$classifications), "TTS")))
   TSS_TTS_params <- list()

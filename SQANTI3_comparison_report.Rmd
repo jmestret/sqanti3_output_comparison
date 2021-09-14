@@ -139,7 +139,7 @@ if (length(f_in) < 4) {
 ```
 
 ```{r, eval=venn}
-p9
+grid.arrange(gTree(children = p9), top = "All isoforms")
 ```
 
 ### UpSet plot
@@ -165,7 +165,7 @@ if (length(f_in) < 4) {
 ```{r, eval=venn, results='asis'}
 for (i in 1:length(p11)){
   cat("\n\n#### ", str_cat[i],"\n")
-  print(p11[i])
+  grid.arrange(gTree(children = p11[i]), top = str_cat[i])
 }
 ```
 
@@ -182,7 +182,7 @@ for (i in 1:length(p12)){
 <!-- Print or not TSS and TSS coords stats -->
 
 ```{r,results='asis'}
-if (TSS_TTS_coord == TRUE) {
+if (TSS_TTS_coord == TRUE & metrics == TRUE) {
   cat("## Standard deviation and Entropy {.tabset .tabset-fade}\n\n") # Header
   cat("### UJC metrics {.tabset .tabset-fade .tabset-dropdown}\n\n")
   print(p17.1)
