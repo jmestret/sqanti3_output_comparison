@@ -182,15 +182,14 @@ for (i in 1:length(p12)){
 <!-- Print or not TSS and TSS coords stats -->
 
 ```{r,results='asis'}
-if (TSS_TTS_coord == TRUE & metrics == TRUE) {
-  cat("## Standard deviation and Entropy {.tabset .tabset-fade}\n\n") # Header
+if (TSS_TTS_coord == TRUE) {
+  cat("## Standard deviation{.tabset .tabset-fade}\n\n") # Header
   cat("### UJC metrics {.tabset .tabset-fade .tabset-dropdown}\n\n")
-  print(p17.1)
-  print(p17.2)
-  print(p17.3)
-  print(p17.4)
-  print(p17.5)
-  print(p17.6)
+  cat("#### TSS\n\n")
+  print(p15.1)
+  cat("\n\n")
+  cat("#### TTS\n\n")
+  print(p15.2)
   cat("\n\n")
   cat("### Standard deviation for each pipeline {.tabset .tabset-fade .tabset-dropdown}\n\n")
   cat("#### TSS\n\n")
@@ -198,14 +197,6 @@ if (TSS_TTS_coord == TRUE & metrics == TRUE) {
   cat("\n\n")
   cat("#### TTS\n\n")
   print(p14)
-  cat("\n\n")
-  
-  cat("### Entropy {.tabset .tabset-fade .tabset-dropdown}\n\n")
-  cat("#### TSS\n\n")
-  print(p15)
-  cat("\n\n")
-  cat("#### TTS\n\n")
-  print(p16)
   cat("\n\n")
 }
 

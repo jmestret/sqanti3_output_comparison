@@ -22,11 +22,7 @@ option_list <- list(
               metavar = "DIROUT"),
   make_option(c("-n", "--name"), type = "character", default = "comparison_output",
               help="Output name for the HTML report and CSV file (without extension) [default= %default]",
-              metavar = "OUTNAME"),
-  make_option(c("-m", "--metrics"), type = "character", default = FALSE,
-              help="Boolean (TRUE or FALSE) if you want to calculate sd and entropy [default= %default]",
-              metavar = "METRICS")
-  
+              metavar = "OUTNAME")
 )
 
 opt_parser = OptionParser(
@@ -38,7 +34,6 @@ opt = parse_args(opt_parser)
 directory <- opt$dir
 output_directory <- opt$outdir
 output_name <- opt$name
-metrics <- opt$metrics
 
 if (is.null(directory)) {
   stop("\n\nAt least one argument must be supplied.\nThe -d argument is required (directory containing classification and junctions files)")
@@ -48,7 +43,6 @@ if (is.null(directory)) {
 # -------------------- Packages
 
 library(DT)
-library(entropy)
 library(gridExtra)
 library(knitr)
 library(rmarkdown)
@@ -146,31 +140,25 @@ reverseswap <- function(class_file) {
   class_file <- swapcoord(class_file)
   sdtts <- class_file$sdTSS[class_file$strand == "-"]
   sdtss <- class_file$sdTTS[class_file$strand == "-"]
-  etts <- class_file$entropyTSS[class_file$strand == "-"]
-  etss <- class_file$entropyTTS[class_file$strand == "-"]
-  
+
   class_file$sdTSS[class_file$strand == "-"] <- sdtss
   class_file$sdTTS[class_file$strand == "-"] <- sdtts
-  class_file$entropyTSS[class_file$strand == "-"] <- etss
-  class_file$entropyTTS[class_file$strand == "-"] <- etts
   return(class_file)
 }
 
 
-# AGGREGATE TAGS | Calculate sd, entropy, min TSS and max TTS
-## WARNING: Calculating the entropy is the slowest part
+# AGGREGATE TAGS | Calculate sd, median TSS and TTS
+## WARNING: Calculating the median is the slowest part
 uniquetag <- function(class_file) {
   dt <- data.table::data.table(class_file)
   dt.out <-
     dt[, list(
       TSS_genomic_coord=list(TSS_genomic_coord),
       TTS_genomic_coord=list(TTS_genomic_coord),
-      minTSS = min(TSS_genomic_coord),
-      maxTTS = max(TTS_genomic_coord),
+      medianTSS = round(median(TSS_genomic_coord)),
+      medianTTS = round(median(TTS_genomic_coord)),
       sdTSS = sd(TSS_genomic_coord),
       sdTTS = sd(TTS_genomic_coord),
-      entropyTSS = entropy::entropy(TSS_genomic_coord),
-      entropyTTS = entropy::entropy(TTS_genomic_coord),
       isoform = list(isoform)
     ), by = c("tags", "structural_category")]
   dt.out <- as.data.frame(dt.out)
@@ -533,8 +521,7 @@ names(l) <- colnames(res[[2]])[3:ncol(res[[2]])]
 # p12: UpSet plot for SC
 # p13: TSS standard deviation
 # p14: TTS standard deviation
-# p15: TSS entropy
-# p16: TTS entropy
+
 
 # -------------------- Global plot parameters
 # COPY-PASTE FROM SQANTI3 REPORT
@@ -710,8 +697,8 @@ for (i in 1:length(res[[2]])) {
     )
 }
 
-if (TSS_TTS_coord == TRUE & metrics == TRUE) {
-  # Calculate UJC SD and Entropy
+if (TSS_TTS_coord == TRUE) {
+  # Calculate UJC SD
   a <- c("tags", rbind(paste0(names(res$classifications), "TSS"), paste0(names(res$classifications), "TTS")))
   TSS_TTS_params <- list()
   for (i in 1:length(res$classifications)){
@@ -724,18 +711,13 @@ if (TSS_TTS_coord == TRUE & metrics == TRUE) {
   a <- paste0(names(res$classifications), "TSS")
   b <- paste0(names(res$classifications), "TTS")
   allTSS <- TSS_TTS_params[, a]
+  allTSS[allTSS == "NULL"] <- NA
   allTTS <- TSS_TTS_params[, b]
+  allTTS[allTTS == "NULL"] <- NA
   
   TSS_TTS_df <- data.frame(tags=TSS_TTS_params$tags)
   
-  # A) Use all coords
-  TSS_TTS_df$all.SD.TSS <- apply(allTSS, 1, function(x) sd(unlist(x)))
-  TSS_TTS_df$all.Entropy.TSS <- apply(allTSS, 1, function(x) entropy::entropy(unlist(x)))
-  
-  TSS_TTS_df$all.SD.TTS <- apply(allTTS, 1, function(x) sd(unlist(x)))
-  TSS_TTS_df$all.Entropy.TTS <- apply(allTTS, 1, function(x) entropy::entropy(unlist(x)))
-  
-  # B) With max and min value
+  # max and min value
   sapplycolumns <- function(data, func){
     tmp <- list()
     for (i in 1:ncol(data)){
@@ -747,6 +729,8 @@ if (TSS_TTS_coord == TRUE & metrics == TRUE) {
     return(as.data.frame(tmp))
   }
   
+  minNA <- function(x) ifelse(length(x) > 1, min(x), NA)
+  
   
   maxTSS <- sapplycolumns(allTSS, max)
   maxTSS[maxTSS=="-Inf"] <- NA
@@ -754,33 +738,34 @@ if (TSS_TTS_coord == TRUE & metrics == TRUE) {
   maxTTS <- sapplycolumns(allTTS, max)
   maxTTS[maxTTS=="-Inf"] <- NA
   
-  minTSS <- sapplycolumns(allTSS, min)
+  minTSS <- sapplycolumns(allTSS, minNA)
   minTSS[minTSS=="Inf"] <- NA
   
-  minTTS <- sapplycolumns(allTTS, min)
+  minTTS <- sapplycolumns(allTTS, minNA)
   minTTS[minTTS=="Inf"] <- NA
   
   minmaxTSS <- cbind(minTSS, maxTSS)
   minmaxTTS <- cbind(minTTS, maxTTS)
   
   TSS_TTS_df$minmax.SD.TSS <- apply(minmaxTSS, 1, function(x) sd(unlist(x), na.rm = TRUE))
-  TSS_TTS_df$minmax.Entropy.TSS <- apply(minmaxTSS, 1, function(x) entropy::entropy(na.omit(unlist(x))))
-  
+
   TSS_TTS_df$minmax.SD.TTS <- apply(minmaxTTS, 1, function(x) sd(unlist(x),na.rm = TRUE))
-  TSS_TTS_df$minmax.Entropy.TTS <- apply(minmaxTTS, 1, function(x) entropy::entropy(na.omit(unlist(x))))
+
+  # Median value
   
-  # C) Max value
+  medianTSS <- sapplycolumns(allTSS, median)
+  medianTTS <- sapplycolumns(allTTS, median)
   
-  TSS_TTS_df$max.SD.TSS <- apply(minmaxTSS, 1, function(x) sd(unlist(x), na.rm = TRUE))
-  TSS_TTS_df$max.Entropy.TSS <- apply(minmaxTSS, 1, function(x) entropy::entropy(na.omit(unlist(x))))
+  TSS_TTS_df$median.SD.TSS <- apply(medianTSS, 1, function(x) sd(unlist(x),na.rm = TRUE))
+
+  TSS_TTS_df$median.SD.TTS <- apply(medianTTS, 1, function(x) sd(unlist(x),na.rm = TRUE))
   
-  TSS_TTS_df$max.SD.TTS <- apply(maxTTS, 1, function(x) sd(unlist(x),na.rm = TRUE))
-  TSS_TTS_df$max.Entropy.TTS <- apply(maxTTS, 1, function(x) entropy::entropy(na.omit(unlist(x))))
+  # Max SD
   
-  # D) Median value
+  TSS_TTS_df$SD.TSS <- apply(TSS_TTS_df[,c("minmax.SD.TSS", "median.SD.TSS")],1,max)
+  TSS_TTS_df$SD.TTS <- apply(TSS_TTS_df[,c("minmax.SD.TTS", "median.SD.TTS")],1,max)
   
-  #medianTSS <- sapplycolumns(allTSS, median)
-  
+
   
   # PLOT 13: TSS standard deviation per pipeline
   
@@ -795,43 +780,15 @@ if (TSS_TTS_coord == TRUE & metrics == TRUE) {
     geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[9],")")) +
     scale_fill_manual(values = myPalette) + mytheme
   
-  # p15: TSS entropy per pipeline
-  
-  p15 <- ggplot(a, aes(log2(a[,colnames(a)[10]]))) +
-    geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[10],")")) +
-    scale_fill_manual(values = myPalette) + mytheme
-  
-  # PLOT 16: TTS entropy per pipeline
-  
-  p16 <- ggplot(a, aes(log2(a[,colnames(a)[11]]))) +
-    geom_density(aes(col = pipeline)) + xlab(paste0("log2(",colnames(a)[11],")")) +
-    scale_fill_manual(values = myPalette) + mytheme
-  
-  # PLOT 17: TSS and TTS SD and Entropy UJC
-    p17.1 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,2]))) +
+
+  # PLOT 15: TSS and TTS SD UJC
+    p15.1 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,6]))) +
         geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
-        mytheme + ggtitle(names(TSS_TTS_df)[2]) 
+        mytheme + ggtitle(names(TSS_TTS_df)[6]) 
     
-    p17.2 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,3]))) +
+    p15.2 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,7]))) +
       geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
-      mytheme + ggtitle(names(TSS_TTS_df)[3]) 
-    
-    p17.3 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,4]))) +
-      geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
-      mytheme + ggtitle(names(TSS_TTS_df)[4]) 
-    
-    p17.4 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,5]))) +
-      geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
-      mytheme + ggtitle(names(TSS_TTS_df)[5])
-    
-    p17.5 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,6]))) +
-      geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
-      mytheme + ggtitle(names(TSS_TTS_df)[6]) 
-    
-    p17.6 <-  ggplot(TSS_TTS_df, aes(log2(TSS_TTS_df[,7]))) +
-      geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
-      mytheme + ggtitle(names(TSS_TTS_df)[7])
-    
+      mytheme + ggtitle(names(TSS_TTS_df)[7]) 
 }
 # -------------------- Output report
 
