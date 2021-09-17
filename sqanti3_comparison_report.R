@@ -22,11 +22,14 @@ option_list <- list(
               metavar = "DIROUT"),
   make_option(c("-n", "--name"), type = "character", default = "comparison_output",
               help="Output name for the HTML report and CSV file (without extension) [default= %default]",
-              metavar = "OUTNAME")
+              metavar = "OUTNAME"),
+  make_option(c("--lrgasp"), action="store_true",type = "character", default = FALSE,
+              help="Use lrgasp metrics",
+              metavar = "LRGASP")
 )
 
 opt_parser = OptionParser(
-  usage = "usage: %prog [-i DIRIN] [-o DIROUT] [-n OUTNAME]",
+  usage = "usage: %prog [-i DIRIN] [-o DIROUT] [-n OUTNAME] [--lrgasp]",
   option_list=option_list
   )
 opt = parse_args(opt_parser)
@@ -34,6 +37,7 @@ opt = parse_args(opt_parser)
 directory <- opt$dir
 output_directory <- opt$outdir
 output_name <- opt$name
+lrgasp <- opt$lrgasp
 
 if (is.null(directory)) {
   stop("\n\nAt least one argument must be supplied.\nThe -d argument is required (directory containing classification and junctions files)")
@@ -89,6 +93,27 @@ for (i in 1:length(class_in)) {
   classification <- read.table(class_in[[i]], header = T, sep = "\t")
   junctions <- read.table(junct_in[[i]], header = T, sep = "\t")
   f_in[[idx]] <- list(classification, junctions)
+}
+
+# LRGASP input 
+
+if (lrgasp == TRUE){
+  lrgasp.files <- 
+    list.files(dir_in,
+               pattern = "*_results.RData",
+               all.files = FALSE,
+               full.names = TRUE)
+  if (length(class_in) != length(lrgasp.files)){
+    print("ERROR: Issue loading LRGASP files")
+    print("Different number of LRGASP files than samples")
+    lrgasp <- FALSE
+  } else {
+    lrgasp.res <- list()
+    for (i in 1:length(lrgasp.files)){
+      f <- lrgasp.files[[i]]
+      lrgasp.res[[names(f_in)[[i]]]] <- load(f)
+    }
+  }
 }
 
 
