@@ -202,6 +202,38 @@ if (TSS_TTS_coord == TRUE) {
 
 ```
 
+## Gene metrics{.tabset .tabset-fade}
+
+```{r}
+p17.1
+p17.2
+p17.3
+p17.4
+```
+
+```{r, results='asis'}
+if (TSS_TTS_coord == TRUE){
+  cat("\n\n## Isoform metrics{.tabset .tabset-fade}\n\n")
+  cat("\n\n### TSS{.tabset .tabset-fade}\n\n")
+  print(p16.1)
+  print(p16.2)
+  print(p16.3)
+  cat("\n\n### TTS{.tabset .tabset-fade}\n\n")
+  print(p16.4)
+  print(p16.5)
+  print(p16.6)
+}
+```
+
+
+```{r, results='asis'}
+if (lrgasp == TRUE){
+  cat("\n\n## SIRV metrics\n\n")
+  t3
+}
+```
+
+
 ## Presence/Ausence table
 
 ```{r}
