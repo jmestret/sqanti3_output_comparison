@@ -95,6 +95,28 @@ for (i in 1:length(class_in)) {
   f_in[[idx]] <- list(classification, junctions)
 }
 
+# TSV Count input
+
+count.files <- 
+  list.files(dir_in,
+             pattern = "*.tsv",
+             all.files = FALSE,
+             full.names = TRUE)
+
+count.tsv <- TRUE
+if (length(class_in) != length(count.files)){
+  print("ERROR: Issue loading count files (.tsv)")
+  print("Different number of count files (.tsv) than samples")
+  count.tsv <- FALSE
+} else {
+  count.res <- list()
+  for (i in 1:length(count.files)){
+    f <- count.files[i]
+    count.res[[names(f_in)[[i]]]] <- read.table(f, header=TRUE, sep="\t")
+  }
+}
+
+
 # GTF input
 
 gtf_name <- list.files(dir_in,
@@ -105,10 +127,12 @@ if (length(gtf_name) == 1){
   ref_gtf <- try({
     system(paste0('cut -f3-5 ', gtf_name[[1]], ' > ', dir_in, '/first_half.txt'))
     system(paste0('cut -f9 ', gtf_name[[1]], ' | cut -d ";" -f1 |grep -v "#" |cut -d " " -f2 > ', dir_in,'/second_half.txt'))
-    gtf1 <- read.table(paste0(dir_in, '/first_half.txt'), header=FALSE, sep="\t")
-    gtf2 <- read.table(paste0(dir_in,'/second_half.txt'), header=FALSE, sep="\t", quote = '"')
+    gtf1 <- read.table(paste0(dir_in, '/first_half_gtf_sqanti_comparator.txt'), header=FALSE, sep="\t")
+    gtf2 <- read.table(paste0(dir_in,'/second_half_gtf_sqanti_comparator.txt'), header=FALSE, sep="\t", quote = '"')
     full_gtf <- cbind(gtf1, gtf2)
     colnames(full_gtf) <- c("feature", "start", "end", "associated_gene")
+    system(paste0('rm ', dir_in, '/first_half_gtf_sqanti_comparator.txt'))
+    system(paste0('rm ', dir_in, '/second_half_gtf_sqanti_comparator.txt'))
     full_gtf
   }, silent = TRUE)
   if (class(ref_gtf) == "try-error"){
@@ -208,10 +232,8 @@ uniquetag <- function(class_file) {
   dt.out <-
     dt[, list(
       associated_gene=list(unique(associated_gene)),
-      iso_exp=as.numeric(median(iso_exp)),
-      gene_exp=as.numeric(median(gene_exp)),
-      l_iso_exp=list(iso_exp),
-      l_gene_exp=list(gene_exp),
+      FL=as.numeric(sum(FL)),
+      l_FL=list(FL),
       exons=unique(exons),
       TSS_genomic_coord=list(TSS_genomic_coord),
       TTS_genomic_coord=list(TTS_genomic_coord),
@@ -264,6 +286,24 @@ multipleComparison <- function(l_class){
 }
 
 
+# --------------------
+# -------------------- Count FL TSV
+
+count_FL <- function(count_f, class_f){
+  count_f <- data.table::data.table(count_f)
+  count_f.compact <- count_f[, list(
+    value=length(read_id)
+  ), by="transcript_id"]
+  count_f.compact <- as.data.frame(count_f.compact)
+  names(count_f.compact)[1] <- "isoform" 
+  
+  count_f.join <- list(class_f, count_f.compact) %>% 
+    purrr::reduce(left_join, by="isoform")
+  class_f$FL <- count_f.join$value
+  return(class_f)
+}
+
+
 # FINAL COMPARISON FUNCTION
 # Given a list of pairs of classification and junction files
 # generates a data.frame with all the common and unique transcripts
@@ -273,6 +313,13 @@ compareTranscriptomes <- function(l_iso){
   for ( i in 1:length(l_iso)){
     if (!("TSS_genomic_coord" %in% colnames(l_iso[[i]][[1]]))){
       TSS_TTS_coord <- FALSE
+    }
+  }
+  
+  # Add FL count
+  if (count.tsv == TRUE){
+    for (i in 1:length(l_iso)){
+      l_iso[[i]][[1]] <- count_FL(count.res[[i]] ,l_iso[[i]][[1]])
     }
   }
   
@@ -364,6 +411,7 @@ for ( i in 1:length(f_in)){
   }
 }
 
+
 # --------------------
 # -------------------- Isoform (UJC) analysis
 
@@ -451,8 +499,13 @@ iso_analysis <- function(res){
   class_compact <- class_bind[, list(
     exons=unique(exons),
     length=as.numeric(median(unlist(length))),
-    iso_exp=as.numeric(sum(unlist(l_iso_exp)))
+    FL_cpm=as.numeric(median(FL))
   ), by="tags"]
+  
+  class_compact <- as.data.frame(class_compact)
+  tot_reads <- sum(class_compact$FL_cpm)
+  
+  class_compact$FL_cpm <- (class_compact$FL_cpm * 10^6)/tot_reads 
   
   if (TSS_TTS_coord == TRUE) {
     TSS_TTS_df <- SD_TSS_TTS(res)
@@ -535,18 +588,24 @@ gene_expr <- function(res_class){
   
   ref_genes.UJC <- ref_genes[, list(
     associated_gene=unique(associated_gene),
-    gene_exp=median(gene_exp)
+    FL=as.numeric(median(FL))
   ), by="tags"]
   
   ref_genes.out <- ref_genes.UJC[, list(
-    gene_exp=sum(gene_exp)
+    FL_cpm=sum(FL)
   ), by="associated_gene"]
+  
+  ref_genes.out <- as.data.frame(ref_genes.out)
+  
+  tot_exp <- sum(ref_genes.out$FL_cpm)
+  ref_genes.out$FL_cpm <- (ref_genes.out$FL_cpm * 10^6) / tot_exp
   
   return(ref_genes.out)
 }
 
-gene_length <- function(df_gtf){
-  df_gtf <- df_gtf[which(df_gtf$feature == "exon"),]
+gene_length <- function(df_gtf, df_gene){
+  cond <- which(df_gtf$feature == "exon" & df_gtf$associated_gene %in% df_gene$associated_gene)
+  df_gtf <- df_gtf[cond,]
   df_gtf$diff <- df_gtf$end - df_gtf$start
   df_gtf <- data.table::data.table(df_gtf)
   df_gtf.out <- df_gtf[, list(
@@ -579,7 +638,7 @@ gene_analysis <- function(res){
 
   df_exp <- gene_expr(class_bind)
   if (class(ref_gtf) == "data.frame"){
-    df_len <- gene_length(ref_gtf)
+    df_len <- gene_length(ref_gtf, df_gene)
     l_df_metrics <- list(df_gene, df_jac, df_exp, df_len)
   } else{
     l_df_metrics <- list(df_gene, df_jac, df_exp)
@@ -611,6 +670,7 @@ if (length(f_in) < 6){
 
 #str_cat <- c("full-splice_match", "incomplete-splice_match", "novel_in_catalog", "novel_not_in_catalog", "antisense", "fusion", "genic", "intergenic")
 str_cat <- c("FSM", "ISM", "NIC", "NNC", "Antisense", "Fusion", "Genic-Genomic", "Genic-Intron", "Intergenic")
+#str_cat <- unique(f_in[[1]][[1]]$structural_category)
 
 ##***** Generates dataframe with a summary of the SQANTI3 classification files
 
@@ -1050,48 +1110,60 @@ if (TSS_TTS_coord == TRUE) {
     
     p16.1 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TSS, y=res$iso_metrics$exons)) +
       geom_point() +
-      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("SD TSS vs Nº exons") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("UJC SD TSS vs Nº exons") + mytheme
     
     p16.2 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TSS, y=res$iso_metrics$length)) +
       geom_point() +
-      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("SD TSS vs Length") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("UJC SD TSS vs Length") + mytheme
     
-    p16.3 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TSS, y=res$iso_metrics$iso_exp)) +
+    p16.3 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TSS, y=res$iso_metrics$FL_cpm)) +
       geom_point() +
-      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("SD TSS vs CPM") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("UJC SD TSS vs CPM") + mytheme
+    
+    p16.4 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$length, y=res$iso_metrics$FL_cpm)) +
+      geom_point() +
+      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("UJC Length vs CPM") + mytheme
     
     # TTS
-    p16.4 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TTS, y=res$iso_metrics$exons)) +
+    p16.5 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TTS, y=res$iso_metrics$exons)) +
       geom_point() +
-      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("SD TTS vs Nº exons") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("UJC SD TTS vs Nº exons") + mytheme
     
-    p16.5 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TTS, y=res$iso_metrics$length)) +
+    p16.6 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TTS, y=res$iso_metrics$length)) +
       geom_point() +
-      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("SD TTS vs Length") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("UJC SD TTS vs Length") + mytheme
     
-    p16.6 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TTS, y=res$iso_metrics$iso_exp)) +
+    p16.7 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TTS, y=res$iso_metrics$FL_cpm)) +
       geom_point() +
-      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("SD TTS vs CPM") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("UJC SD TTS vs CPM") + mytheme
+    
+    p16.8 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$length, y=res$iso_metrics$FL_cpm)) +
+      geom_point() +
+      geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("UJC Length vs CPM") + mytheme
 }
 
 ##*****
 # Gene metrics
 
-p17.1 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$length, y=res$gene_metrics$gene_exp)) +
+p17.1 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$length, y=res$gene_metrics$FL_cpm)) +
   geom_point() +
-  geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("Length vs CPM") + mytheme
+  geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("Gene Length vs CPM") + mytheme
 
 p17.2 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$length, y=res$gene_metrics$N_UJC)) +
   geom_point() +
-  geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("Length vs N_UJC") + mytheme
+  geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("Gene Length vs N_UJC") + mytheme
 
 p17.3 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$length, y=res$gene_metrics$jaccard)) +
   geom_point() +
-  geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("Length vs Jaccard index") + mytheme
+  geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("Gene Length vs Jaccard index") + mytheme
 
 p17.4 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$N_UJC, y=res$gene_metrics$jaccard)) +
   geom_point() +
-  geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("N_UJC vs Jaccard index") + mytheme
+  geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("Gene N_UJC vs Jaccard index") + mytheme
+
+p17.5 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$FL_cpm, y=res$gene_metrics$jaccard)) +
+  geom_point() +
+  geom_smooth(method="loess", color="red", se=FALSE) + ggtitle("Gene CPM vs Jaccard index") + mytheme
 
 
 # -------------------- Output report

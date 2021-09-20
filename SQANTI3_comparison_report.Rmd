@@ -209,6 +209,7 @@ p17.1
 p17.2
 p17.3
 p17.4
+p17.5
 ```
 
 ```{r, results='asis'}
@@ -218,10 +219,12 @@ if (TSS_TTS_coord == TRUE){
   print(p16.1)
   print(p16.2)
   print(p16.3)
-  cat("\n\n### TTS{.tabset .tabset-fade}\n\n")
   print(p16.4)
+  cat("\n\n### TTS{.tabset .tabset-fade}\n\n")
   print(p16.5)
   print(p16.6)
+  print(p16.7)
+  print(p16.8)
 }
 ```
 
