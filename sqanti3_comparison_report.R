@@ -7,174 +7,59 @@
 
 
 # Author: Jorge Martinez Tomas & Alejandro Paniagua
-# Last modified: 18/08/2021 by Jorge Martinez
-
-# -------------------- Argument parser
-
-library(optparse)
-
-option_list <- list(
-  make_option(c("-d", "--dir"), type = "character", default = NULL,
-              help="directory with input files (classification and junction files)",
-              metavar = "DIRIN"),
-  make_option(c("-o", "--outdir"), type = "character", default = ".",
-              help="Output directory for the report and CSV file [default= %default]",
-              metavar = "DIROUT"),
-  make_option(c("-n", "--name"), type = "character", default = "comparison_output",
-              help="Output name for the HTML report and CSV file (without extension) [default= %default]",
-              metavar = "OUTNAME"),
-  make_option(c("--lrgasp"), action="store_true",type = "character", default = FALSE,
-              help="Use lrgasp metrics",
-              metavar = "LRGASP")
-)
-
-opt_parser = OptionParser(
-  usage = "usage: %prog [-i DIRIN] [-o DIROUT] [-n OUTNAME] [--lrgasp]",
-  option_list=option_list
-  )
-opt = parse_args(opt_parser)
-
-directory <- opt$dir
-output_directory <- opt$outdir
-output_name <- opt$name
-lrgasp <- opt$lrgasp
-
-if (is.null(directory)) {
-  stop("\n\nAt least one argument must be supplied.\nThe -d argument is required (directory containing classification and junctions files)")
-}
-  
-
-# -------------------- Packages
-
-library(DT)
-library(gridExtra)
-library(knitr)
-library(rmarkdown)
-library(tidyverse)
-library(UpSetR)
-library(VennDiagram)
+# Last modified: 21/09/2021 by Jorge Martinez
 
 
-# -------------------- Load data
+#######################################
+#                                     #
+#      PACKAGES AND LIBRARIES         #
+#                                     #
+#######################################
 
-if (dir.exists(directory)){
-  dir_in <- directory
-} else {
-  dir_in <- paste(getwd(), directory, sep="/")
-  if (!dir.exists(dir_in)){
-    stop(paste0("\n\nCould not find the input directory (", directory, ").\nPlease enter a valid path"))
-  }
-}
-
-
-class_in <-
-  list.files(dir_in,
-             pattern = "*_classification.txt",
-             all.files = FALSE,
-             full.names = TRUE)
-junct_in <-
-  list.files(dir_in,
-             pattern = "*_junctions.txt",
-             all.files = FALSE,
-             full.names = TRUE)
-
-if (length(class_in) != length(junct_in)){
-  stop("ERROR: There is a different number of classification and junction files in the directory")
-} else if (length(class_in) == 0){
-  stop(paste0("ERROR: No classification and junction files were found in the directory: ", dir_in))
-}
-
-f_in <- list()
-for (i in 1:length(class_in)) {
-  f <- class_in[[i]]
-  start <- stringr::str_locate(f, dir_in)[[2]]
-  end <- stringr::str_locate(f, "_classification.txt")[[1]]
-  idx <- substring(f, (start+2), (end-1))
-  classification <- read.table(class_in[[i]], header = T, sep = "\t")
-  junctions <- read.table(junct_in[[i]], header = T, sep = "\t")
-  f_in[[idx]] <- list(classification, junctions)
-}
-
-# TSV Count input
-
-count.files <- 
-  list.files(dir_in,
-             pattern = "*.tsv",
-             all.files = FALSE,
-             full.names = TRUE)
-
-count.tsv <- TRUE
-if (length(class_in) != length(count.files)){
-  print("ERROR: Issue loading count files (.tsv)")
-  print("Different number of count files (.tsv) than samples")
-  count.tsv <- FALSE
-} else {
-  count.res <- list()
-  for (i in 1:length(count.files)){
-    f <- count.files[i]
-    count.res[[names(f_in)[[i]]]] <- read.table(f, header=TRUE, sep="\t")
-  }
-}
+suppressMessages(library(DT))
+suppressMessages(library(gridExtra))
+suppressMessages(library(knitr))
+suppressMessages(library(optparse))
+suppressMessages(library(rmarkdown))
+suppressMessages(library(tidyverse))
+suppressMessages(library(UpSetR))
+suppressMessages(library(VennDiagram))
 
 
-# GTF input
+#######################################
+#                                     #
+#             FUNCTIONS               #
+#                                     #
+#######################################
 
-gtf_name <- list.files(dir_in,
-                       pattern = "*.gtf",
-                       all.files = FALSE,
-                       full.names = TRUE)
-if (length(gtf_name) == 1){
-  ref_gtf <- try({
-    system(paste0('cut -f3-5 ', gtf_name[[1]], ' > ', dir_in, '/first_half.txt'))
-    system(paste0('cut -f9 ', gtf_name[[1]], ' | cut -d ";" -f1 |grep -v "#" |cut -d " " -f2 > ', dir_in,'/second_half.txt'))
-    gtf1 <- read.table(paste0(dir_in, '/first_half_gtf_sqanti_comparator.txt'), header=FALSE, sep="\t")
-    gtf2 <- read.table(paste0(dir_in,'/second_half_gtf_sqanti_comparator.txt'), header=FALSE, sep="\t", quote = '"')
-    full_gtf <- cbind(gtf1, gtf2)
-    colnames(full_gtf) <- c("feature", "start", "end", "associated_gene")
-    system(paste0('rm ', dir_in, '/first_half_gtf_sqanti_comparator.txt'))
-    system(paste0('rm ', dir_in, '/second_half_gtf_sqanti_comparator.txt'))
-    full_gtf
-  }, silent = TRUE)
-  if (class(ref_gtf) == "try-error"){
-    print("ERROR: Issue loading reference GTF file")
-  }
-} else{
-  print("ERROR: Issue loading reference GTF file")
-}
-
-
-# LRGASP input
+# -------------------- Read data
 
 loadRData <- function(fileName){
   load(fileName)
   get(ls()[ls() != "fileName"])
 }
 
-if (lrgasp == TRUE){
-  lrgasp.files <- 
-    list.files(dir_in,
-               pattern = "*_results.RData",
-               all.files = FALSE,
-               full.names = TRUE)
-  if (length(class_in) != length(lrgasp.files)){
-    print("ERROR: Issue loading LRGASP files")
-    print("Different number of LRGASP files than samples")
-    lrgasp <- FALSE
-  } else {
-    lrgasp.res <- list()
-    for (i in 1:length(lrgasp.files)){
-      f <- lrgasp.files[i]
-      lrgasp.res[[names(f_in)[[i]]]] <- loadRData(f)
-    }
-  }
+
+# -------------------- Tags and basic comparison P/A
+
+count_FL <- function(count_f, class_f){
+  # Count FL reads from TSV file
+  count_f <- data.table::data.table(count_f)
+  count_f.compact <- count_f[, list(
+    value=length(read_id)
+  ), by="transcript_id"]
+  count_f.compact <- as.data.frame(count_f.compact)
+  names(count_f.compact)[1] <- "isoform" 
+  
+  count_f.join <- list(class_f, count_f.compact) %>% 
+    purrr::reduce(left_join, by="isoform")
+  class_f$FL <- count_f.join$value
+  return(class_f)
 }
 
-
-# -------------------- Functions
-
-# CREATE TAGS
-# Builds isoform ids (tags) with the following structure: Chr_strand_start_end
 isoformTags <- function(junctions_file) {
+  # Create unique junction chains (UJC)
+  # Builds isoform tags (UJC) with the following structure: Chr_strand_start_end
   df <- junctions_file[, c("isoform", "chrom", "strand")] # df with isoforms in *junctions.txt
   dt <- data.table::data.table(df)
   dt <- dt[,coord:=paste0(junctions_file$genomic_start_coord, "_", junctions_file$genomic_end_coord)]
@@ -188,14 +73,31 @@ isoformTags <- function(junctions_file) {
 }
 
 
-# DELETE MONOEXONS
-# Deletes monoexons and transcripts from rare chromosomes
+addSC <- function(class_file){
+  # Add the structural category to the tag (UJC)
+  str_cat <- c("full-splice_match", "incomplete-splice_match", "novel_in_catalog", "novel_not_in_catalog")
+  shortSC <- c("FSM", "ISM", "NIC", "NNC")
+  
+  class_file$SC <- class_file$structural_category
+  for (i in 1:length(str_cat)){
+    cond <- which(class_file$SC == str_cat[i])
+    class_file$SC[cond] <- shortSC[i]
+  }
+  class_file$tags <- paste0(class_file$SC, "_", class_file$tags)
+  class_file$SC <- NULL
+  return(class_file)
+}
+
+
 filter_monoexon <- function(class_file){
+  # Delete monoexons
   filtered_classification <- class_file[class_file$exons > 1, ]
   filtered_classification[order(filtered_classification$isoform),]
 }
 
+
 filter_monoexon_sirv <- function(class_file){
+  # Delete monoexons and transcripts from rare chromosomes
   valid_chrom <- c(paste0("chr", 1:22), paste0("chr", c("X","Y")), paste0("SIRV", 1:7))
   
   filtered_classification <- class_file[class_file$exons > 1 &
@@ -204,8 +106,8 @@ filter_monoexon_sirv <- function(class_file){
 }
 
 
-# SWAP COORDINATES STRAND
 swapcoord <- function(dfclass){
+  # Swap TSS and TTS coordinates depending on the strand
   tss <- dfclass$TTS_genomic_coord[dfclass$strand == "-"]
   tts <- dfclass$TSS_genomic_coord[dfclass$strand == "-"]
   dfclass$TSS_genomic_coord[dfclass$strand == "-"] <- tss
@@ -213,21 +115,21 @@ swapcoord <- function(dfclass){
   return(dfclass)
 }
 
-# REVERSE SWAP
+
 reverseswap <- function(class_file) {
+  # Reverse the swap from swapcoord()
   class_file <- swapcoord(class_file)
   sdtts <- class_file$sdTSS[class_file$strand == "-"]
   sdtss <- class_file$sdTTS[class_file$strand == "-"]
-
+  
   class_file$sdTSS[class_file$strand == "-"] <- sdtss
   class_file$sdTTS[class_file$strand == "-"] <- sdtts
   return(class_file)
 }
 
 
-# AGGREGATE TAGS | Calculate sd, median TSS and TTS
-## WARNING: Calculating the median is the slowest part
 uniquetag <- function(class_file) {
+  # Aggregate by UJC and calculate many metrics when coords ar given
   dt <- data.table::data.table(class_file)
   dt.out <-
     dt[, list(
@@ -248,34 +150,26 @@ uniquetag <- function(class_file) {
   return(dt.out[order(dt.out$tags, dt.out$structural_category),])
 }
 
+
 uniquetag_simple <- function(class_file) {
+  # Aggregate by UJC and calculate some basic metrics
   dt <- data.table::data.table(class_file)
   dt.out <-
     dt[, list(
+      associated_gene=list(unique(associated_gene)),
+      FL=as.numeric(sum(FL)),
+      l_FL=list(FL),
+      exons=unique(exons),
+      length=list(length),
       isoform = list(isoform)
     ), by = c("tags", "structural_category")]
   dt.out <- as.data.frame(dt.out)
   return(dt.out[order(dt.out$tags, dt.out$structural_category),])
 }
 
-# ADD THE SC TO THE TAG
-addSC <- function(class_file){
-  str_cat <- c("full-splice_match", "incomplete-splice_match", "novel_in_catalog", "novel_not_in_catalog")
-  shortSC <- c("FSM", "ISM", "NIC", "NNC")
-  
-  class_file$SC <- class_file$structural_category
-  for (i in 1:length(str_cat)){
-    cond <- which(class_file$SC == str_cat[i])
-    class_file$SC[cond] <- shortSC[i]
-  }
-  class_file$tags <- paste0(class_file$SC, "_", class_file$tags)
-  class_file$SC <- NULL
-  return(class_file)
-}
 
-
-#  COMPARE TAGS | PRESENCE AUSENCE
 multipleComparison <- function(l_class){
+  # Presence and ausence of UJC in the samples
   a <- c(rbind(names(l_class), paste0(names(l_class), "SC")))
   
   l_class %>%
@@ -286,148 +180,21 @@ multipleComparison <- function(l_class){
 }
 
 
-# --------------------
-# -------------------- Count FL TSV
-
-count_FL <- function(count_f, class_f){
-  count_f <- data.table::data.table(count_f)
-  count_f.compact <- count_f[, list(
-    value=length(read_id)
-  ), by="transcript_id"]
-  count_f.compact <- as.data.frame(count_f.compact)
-  names(count_f.compact)[1] <- "isoform" 
-  
-  count_f.join <- list(class_f, count_f.compact) %>% 
-    purrr::reduce(left_join, by="isoform")
-  class_f$FL <- count_f.join$value
-  return(class_f)
-}
-
-
-# FINAL COMPARISON FUNCTION
-# Given a list of pairs of classification and junction files
-# generates a data.frame with all the common and unique transcripts
-compareTranscriptomes <- function(l_iso){
-  # Check for TSS and TTS genomic coords
-  TSS_TTS_coord <- TRUE
-  for ( i in 1:length(l_iso)){
-    if (!("TSS_genomic_coord" %in% colnames(l_iso[[i]][[1]]))){
-      TSS_TTS_coord <- FALSE
-    }
-  }
-  
-  # Add FL count
-  if (count.tsv == TRUE){
-    for (i in 1:length(l_iso)){
-      l_iso[[i]][[1]] <- count_FL(count.res[[i]] ,l_iso[[i]][[1]])
-    }
-  }
-  
-  # Filter monoexon, add tag column and aggregate
-  n <- names(l_iso)
-  l_class <- list()
-  for ( i in 1:length(l_iso)) {
-    class.filtered <- filter_monoexon(l_iso[[i]][[1]]) # delete monoexons
-    
-    tags <- isoformTags(l_iso[[i]][[2]]) # build tags
-    if (length(tags) != nrow(class.filtered)){
-      class.filtered <- filter_monoexon_sirv(l_iso[[i]][[1]])
-    }
-    class.filtered[,"tags"] <- tags # add tags
-    
-    if (TSS_TTS_coord){
-      class.swap <- swapcoord(class.filtered) # swap - strand
-      class.uniquetags <- as.data.frame(uniquetag(class.swap)) # group by tag
-      class.out <- reverseswap(class.uniquetags) # re-swap TSS and TSS - strand
-    } else{
-      class.out <- uniquetag_simple(class.filtered) # group by tag
-    }
-    
-    class.out <- addSC(class.out)
-    l_class[[i]] <- class.out # add to list
-  }
-  
-  names(l_class) <- n # add names
-  comptags <- multipleComparison(l_class)
-  comptags.SC <- cbind(structural_category =
-                         do.call(dplyr::coalesce, comptags[,paste0(n,"SC")]),
-                       comptags[,n]
-  )
-  comptags.out <- cbind( TAGS =
-                           do.call(dplyr::coalesce, comptags[,n]),
-                         comptags.SC
-  )
-  
-  comptags.PA <- comptags.out
-  comptags.PA[,3:ncol(comptags.PA)][!is.na(comptags.PA[,3:ncol(comptags.PA)])] <- 1
-  comptags.PA[,3:ncol(comptags.PA)][is.na(comptags.PA[,3:ncol(comptags.PA)])] <- 0
-  
-  output <- list(classifications = l_class, comparison = comptags.out, comparisonPA = comptags.PA)
-  
-  return(output)
-}
-
-
-# -------------------- Output functions
-
-# ISOFORM TO GENOME BROWSER
-iso2url <- function(id){
-  if (id != "NA") {
-    id.split <- str_split(id,"_")
-    chr <- id.split[[1]][2]
-    start <- id.split[[1]][4]
-    end <- id.split[[1]][length(id.split[[1]])]
-    name <- substr(id, 1, 30)
-    url <- paste0(
-      "<a href='https://genome.ucsc.edu/cgi-bin/hgTracks?db=hg38&lastVirtModeType=default&lastVirtModeExtraState=&virtModeType=default&virtMode=0&nonVirtPosition=&position=",
-      chr, "%3A", start, "%2D", end, "&hgsid=1143169919_jAraPbUWtMCdAHfgTHk4sDHQHW7R",
-      "'>", name, "...</a>")
-    return(url)
-  } else { return(NA) }
-}
-
-
-# -------------------- 
-# --------------------  Unique tag comparison
-
-res <- try({
-  compareTranscriptomes(f_in)
-}, silent = TRUE)
-
-if (class(res) == "try-error"){
-  print("ERROR: An error has ocurred during the comparison. A partial report will be generated. Here's the original error message:")
-  print(geterrmessage())
-}
-
-print("Basic comparison finished")
-
-
-##*****  Check for TSS and TTS genomic coords
-
-TSS_TTS_coord <- TRUE
-for ( i in 1:length(f_in)){
-  if (!("TSS_genomic_coord" %in% colnames(f_in[[i]][[1]]))){
-    TSS_TTS_coord <- FALSE
-  }
-}
-
-
-# --------------------
 # -------------------- Isoform (UJC) analysis
 
-SD_TSS_TTS <- function(res){
+SD_TSS_TTS <- function(l_class){
   # Calculate UJC SD
-  a <- c("tags", rbind(paste0(names(res$classifications), "TSS"), paste0(names(res$classifications), "TTS")))
+  a <- c("tags", rbind(paste0(names(l_class), "TSS"), paste0(names(l_class), "TTS")))
   TSS_TTS_params <- list()
-  for (i in 1:length(res$classifications)){
-    TSS_TTS_params[[i]] <- res$classifications[[i]][,c("tags", "TSS_genomic_coord", "TTS_genomic_coord")]
+  for (i in 1:length(l_class)){
+    TSS_TTS_params[[i]] <- l_class[[i]][,c("tags", "TSS_genomic_coord", "TTS_genomic_coord")]
   }
   TSS_TTS_params <- TSS_TTS_params %>% 
     purrr::reduce(full_join, by="tags") %>% 
     setNames(a)
   
-  a <- paste0(names(res$classifications), "TSS")
-  b <- paste0(names(res$classifications), "TTS")
+  a <- paste0(names(l_class), "TSS")
+  b <- paste0(names(l_class), "TTS")
   allTSS <- TSS_TTS_params[, a]
   allTSS[allTSS == "NULL"] <- NA
   allTTS <- TSS_TTS_params[, b]
@@ -486,14 +253,9 @@ SD_TSS_TTS <- function(res){
   return(TSS_TTS_df[, c("tags", "SD.TSS", "SD.TTS")])
 }
 
-iso_analysis <- function(res){
+iso_analysis <- function(l_class){
   
-  l_res_class <- list()
-  for (i in 1:length(res)){
-    df.class <- res$classifications[[i]]
-    l_res_class[[i]] <- df.class
-  }
-  class_bind <- bind_rows(l_res_class)
+  class_bind <- bind_rows(l_class)
   class_bind <- data.table::data.table(class_bind)
   
   class_compact <- class_bind[, list(
@@ -508,7 +270,7 @@ iso_analysis <- function(res){
   class_compact$FL_cpm <- (class_compact$FL_cpm * 10^6)/tot_reads 
   
   if (TSS_TTS_coord == TRUE) {
-    TSS_TTS_df <- SD_TSS_TTS(res)
+    TSS_TTS_df <- SD_TSS_TTS(l_class)
     df_iso <- list(TSS_TTS_df, class_compact) %>% 
       purrr::reduce(full_join, by="tags")
   } else {df_iso <- data.frame(
@@ -518,19 +280,13 @@ iso_analysis <- function(res){
     exons=class_compact$exons,
     length=class_compact$length,
     iso_exp=class_compact$iso_exp
-    )}
+  )}
   
   return(df_iso)
   
 }
 
 
-res[["iso_metrics"]] <- iso_analysis(res)
-
-print("Isoform analysis done")
-
-
-# --------------------
 # -------------------- Gene analysis
 
 del_novel_genes <- function(df){
@@ -564,8 +320,8 @@ jaccard <- function(x, comb){
   return(median(val))
 }
 
-get_jaccard <- function(l_df){
-  a <- c("associated_gene", paste0("tags_", names(res$classifications)))
+get_jaccard <- function(l_df, l_class){
+  a <- c("associated_gene", paste0("tags_", names(l_class)))
   l <- list()
   for (i in 2:length(l_df)){
     l[[i-1]] <- l_df[[i]][,c("associated_gene","tags")]
@@ -614,28 +370,27 @@ gene_length <- function(df_gtf, df_gene){
   return(as.data.frame(df_gtf.out))
 }
 
-gene_analysis <- function(res){
+gene_analysis <- function(l_class){
   l_res_class <- list()
-  for (i in 1:length(res$classifications)){
-    df.class <- res$classifications[[i]]
-    l_res_class[[i]] <- del_novel_genes(df.class)
+  for (i in 1:length(l_class)){
+    l_res_class[[i]] <- del_novel_genes(l_class[[i]])
   }
   class_bind <- bind_rows(l_res_class)
   
   l_gene_df <- list()
   l_gene_df[[1]] <- tags_per_gene(class_bind)
-  for (i in 1:length(res$classifications)){
-    l_gene_df[[i+1]] <- tags_per_gene(res$classifications[[i]])
+  for (i in 1:length(l_class)){
+    l_gene_df[[i+1]] <- tags_per_gene(l_class[[i]])
   }
   
-  a <- c("associated_gene", "N_UJC", paste0("N_UJC_", names(res$classifications)))
+  a <- c("associated_gene", "N_UJC", paste0("N_UJC_", names(l_class)))
   df_gene <- l_gene_df %>% 
     purrr::map(~ data.frame(col = .$associated_gene, .$N_UJC, stringsAsFactors = FALSE)) %>% 
     purrr::reduce(full_join, by="col") %>% 
     setNames(a)
   
-  df_jac <- get_jaccard(l_gene_df)
-
+  df_jac <- get_jaccard(l_gene_df, l_class)
+  
   df_exp <- gene_expr(class_bind)
   if (class(ref_gtf) == "data.frame"){
     df_len <- gene_length(ref_gtf, df_gene)
@@ -652,27 +407,289 @@ gene_analysis <- function(res){
 }
 
 
-res[["gene_metrics"]] <- gene_analysis(res)
+# -------------------- Final comparison function
 
-print("Gene analysis done")
+compareTranscriptomes <- function(l_iso){
+  
+  # Add FL count
+  if (count.tsv == TRUE){
+    print("Counting FL reads...")
+    for (i in 1:length(l_iso)){
+      l_iso[[i]][[1]] <- count_FL(count.res[[i]] ,l_iso[[i]][[1]])
+    }
+  }
+  
+  # Filter monoexon, add tag column and aggregate
+  print("Generating unique junction chains (UJC)...")
+  n <- names(l_iso)
+  l_class <- list()
+  for ( i in 1:length(l_iso)) {
+    class.filtered <- filter_monoexon(l_iso[[i]][[1]]) # delete monoexons
+    
+    tags <- isoformTags(l_iso[[i]][[2]]) # build tags
+    if (length(tags) != nrow(class.filtered)){
+      class.filtered <- filter_monoexon_sirv(l_iso[[i]][[1]])
+    }
+    class.filtered[,"tags"] <- tags # add tags
+    
+    if (TSS_TTS_coord){
+      class.swap <- swapcoord(class.filtered) # swap - strand
+      class.uniquetags <- as.data.frame(uniquetag(class.swap)) # group by tag
+      class.out <- reverseswap(class.uniquetags) # re-swap TSS and TSS - strand
+    } else{
+      class.out <- uniquetag_simple(class.filtered) # group by tag
+    }
+    
+    class.out <- addSC(class.out)
+    l_class[[i]] <- class.out # add to list
+  }
+  
+  print("Performing presence/ausence comparison...")
+  names(l_class) <- n # add names
+  comptags <- multipleComparison(l_class)
+  comptags.SC <- cbind(structural_category =
+                         do.call(dplyr::coalesce, comptags[,paste0(n,"SC")]),
+                       comptags[,n]
+  )
+  comptags.out <- cbind( TAGS =
+                           do.call(dplyr::coalesce, comptags[,n]),
+                         comptags.SC
+  )
+  
+  comptags.PA <- comptags.out
+  comptags.PA[,3:ncol(comptags.PA)][!is.na(comptags.PA[,3:ncol(comptags.PA)])] <- 1
+  comptags.PA[,3:ncol(comptags.PA)][is.na(comptags.PA[,3:ncol(comptags.PA)])] <- 0
+  
+  print("Performing UJC analysis...")
+  iso.metrics <- iso_analysis(l_class)
+  
+  print("Analysing associated genes...")
+  gene.metrics <- gene_analysis(l_class)
+  
+  output <-
+    list(
+      classifications = l_class,
+      comparison = comptags.out,
+      comparisonPA = comptags.PA,
+      iso_metrics = iso.metrics,
+      gene_metrics = gene.metrics
+    )
+  
+  return(output)
+}
 
 
-# --------------------
-# -------------------- Basic comparison with classification files
+# -------------------- Functions for the report generation
 
-##*****  Define max number of samples in plots
+iso2url <- function(id){
+  # Isoform coords to Genome Browser
+  if (id != "NA") {
+    id.split <- str_split(id,"_")
+    chr <- id.split[[1]][2]
+    start <- id.split[[1]][4]
+    end <- id.split[[1]][length(id.split[[1]])]
+    name <- substr(id, 1, 30)
+    url <- paste0(
+      "<a href='https://genome.ucsc.edu/cgi-bin/hgTracks?db=hg38&lastVirtModeType=default&lastVirtModeExtraState=&virtModeType=default&virtMode=0&nonVirtPosition=&position=",
+      chr, "%3A", start, "%2D", end, "&hgsid=1143169919_jAraPbUWtMCdAHfgTHk4sDHQHW7R",
+      "'>", name, "...</a>")
+    return(url)
+  } else { return(NA) }
+}
+
+
+
+#######################################
+#                                     #
+#                MAIN                 #
+#                                     #
+#######################################
+
+# -------------------- Argument parser
+
+option_list <- list(
+  make_option(c("-d", "--dir"), type = "character", default = NULL,
+              help="directory with input files (classification and junction files)",
+              metavar = "DIRIN"),
+  make_option(c("-o", "--outdir"), type = "character", default = ".",
+              help="Output directory for the report and CSV file [default= %default]",
+              metavar = "DIROUT"),
+  make_option(c("-n", "--name"), type = "character", default = "comparison_output",
+              help="Output name for the HTML report and CSV file (without extension) [default= %default]",
+              metavar = "OUTNAME"),
+  make_option(c("--lrgasp"), action="store_true",type = "character", default = FALSE,
+              help="Use lrgasp metrics",
+              metavar = "LRGASP")
+)
+
+opt_parser = OptionParser(
+  usage = "usage: %prog [-i DIRIN] [-o DIROUT] [-n OUTNAME] [--lrgasp]",
+  option_list=option_list
+)
+
+opt = parse_args(opt_parser)
+
+directory <- opt$dir
+output_directory <- opt$outdir
+output_name <- opt$name
+lrgasp <- opt$lrgasp
+
+if (is.null(directory)) {
+  stop("\n\nAt least one argument must be supplied.\nThe -d argument is required (directory containing input files)")
+}
+
+
+# -------------------- Load data
+
+print("Reading input data...")
+if (dir.exists(directory)){
+  dir_in <- directory
+} else {
+  dir_in <- paste(getwd(), directory, sep="/")
+  if (!dir.exists(dir_in)){
+    stop(paste0("\n\nCould not find the input directory (", directory, ").\nPlease enter a valid path"))
+  }
+}
+
+class_in <-
+  list.files(dir_in,
+             pattern = "*_classification.txt",
+             all.files = FALSE,
+             full.names = TRUE)
+junct_in <-
+  list.files(dir_in,
+             pattern = "*_junctions.txt",
+             all.files = FALSE,
+             full.names = TRUE)
+
+if (length(class_in) != length(junct_in)){
+  stop("ERROR: There is a different number of classification and junction files in the directory")
+} else if (length(class_in) == 0){
+  stop(paste0("ERROR: No classification and junction files were found in the directory: ", dir_in))
+}
+
+f_in <- list()
+for (i in 1:length(class_in)) {
+  f <- class_in[[i]]
+  start <- stringr::str_locate(f, dir_in)[[2]]
+  end <- stringr::str_locate(f, "_classification.txt")[[1]]
+  idx <- substring(f, (start+2), (end-1))
+  classification <- read.table(class_in[[i]], header = T, sep = "\t")
+  junctions <- read.table(junct_in[[i]], header = T, sep = "\t")
+  f_in[[idx]] <- list(classification, junctions)
+}
+
+# ----- TSV Count input
+
+count.files <- 
+  list.files(dir_in,
+             pattern = "*.tsv",
+             all.files = FALSE,
+             full.names = TRUE)
+
+count.tsv <- TRUE
+if (length(class_in) != length(count.files)){
+  print("ERROR: Issue loading count files (.tsv)")
+  print("Different number of count files (.tsv) than samples")
+  count.tsv <- FALSE
+} else {
+  count.res <- list()
+  for (i in 1:length(count.files)){
+    f <- count.files[i]
+    count.res[[names(f_in)[[i]]]] <- read.table(f, header=TRUE, sep="\t")
+  }
+}
+
+
+# ----- GTF input
+
+gtf_name <- list.files(dir_in,
+                       pattern = "*.gtf",
+                       all.files = FALSE,
+                       full.names = TRUE)
+if (length(gtf_name) == 1){
+  ref_gtf <- try({
+    f1 <- "first_half_gtf_sqanti_comparator.txt"
+    f2 <- "second_half_gtf_sqanti_comparator.txt"
+    system(paste0('cut -f3-5 ', gtf_name[[1]], ' > ', dir_in, '/', f1))
+    system(paste0('cut -f9 ', gtf_name[[1]], ' | cut -d ";" -f1 |grep -v "#" |cut -d " " -f2 > ', dir_in,'/', f2))
+    gtf1 <- read.table(paste0(dir_in, '/', f1), header=FALSE, sep="\t")
+    gtf2 <- read.table(paste0(dir_in,'/', f2), header=FALSE, sep="\t", quote = '"')
+    full_gtf <- cbind(gtf1, gtf2)
+    colnames(full_gtf) <- c("feature", "start", "end", "associated_gene")
+    system(paste0('rm ', dir_in, '/', f1))
+    system(paste0('rm ', dir_in, '/', f2))
+    full_gtf
+  }, silent = TRUE)
+  if (class(ref_gtf) == "try-error"){
+    print("ERROR: Issue loading reference GTF file")
+  }
+} else{
+  print("ERROR: Issue loading reference GTF file")
+}
+
+
+# ----- LRGASP input
+
+if (lrgasp == TRUE){
+  lrgasp.files <- 
+    list.files(dir_in,
+               pattern = "*_results.RData",
+               all.files = FALSE,
+               full.names = TRUE)
+  if (length(class_in) != length(lrgasp.files)){
+    print("ERROR: Issue loading LRGASP files")
+    print("Different number of LRGASP files than samples")
+    lrgasp <- FALSE
+  } else {
+    lrgasp.res <- list()
+    for (i in 1:length(lrgasp.files)){
+      f <- lrgasp.files[i]
+      lrgasp.res[[names(f_in)[[i]]]] <- loadRData(f)
+    }
+  }
+}
+
+
+# -------------------- Check for TSS and TTS genomic coords
+
+TSS_TTS_coord <- TRUE
+for ( i in 1:length(f_in)){
+  if (!("TSS_genomic_coord" %in% colnames(f_in[[i]][[1]]))){
+    TSS_TTS_coord <- FALSE
+  }
+}
+
+# --------------------  P/A comparison and Iso & Gene analysis
+
+res <- try({
+  compareTranscriptomes(f_in)
+}, silent = TRUE)
+
+if (class(res) == "try-error"){
+  print("ERROR: An error has ocurred during the comparison. A partial report will be generated. Here's the original error message:")
+  print(geterrmessage())
+}
+
+
+# -------------------- Comparison with res classification files
+print("Comparing comparisson results between samples...")
+
+# ----- Define max number of samples in plots
+
 if (length(f_in) < 6){
   limit <- length(f_in)
 } else {limit <- 5}
 
 
-##*****  Vector of structural categories
+# ----- Vector of structural categories
 
+#str_cat <- unique(f_in[[1]][[1]]$structural_category)
 #str_cat <- c("full-splice_match", "incomplete-splice_match", "novel_in_catalog", "novel_not_in_catalog", "antisense", "fusion", "genic", "intergenic")
 str_cat <- c("FSM", "ISM", "NIC", "NNC", "Antisense", "Fusion", "Genic-Genomic", "Genic-Intron", "Intergenic")
-#str_cat <- unique(f_in[[1]][[1]]$structural_category)
 
-##***** Generates dataframe with a summary of the SQANTI3 classification files
+
+# ----- Generates dataframe with a summary of the SQANTI3 classification files
 
 df_summary.1 <- data.frame(ID = names(f_in))
 
@@ -693,10 +710,8 @@ for (i in str_cat) {
   df_summary.1[,i] <- n
 }
 
-#colnames(df_summary.1) <- c("ID","total", "FSM", "ISM", "NIC", "NNC", "antisense", "fusion", "genic", "intergenic")
 
-
-##***** Generates dataframe with a summary of the unique tag comparison
+# ----- Generates dataframe with a summary of the unique tag comparison
 
 df_summary.2 <- data.frame(ID = names(res[[2]][3:ncol(res[[2]])]))
 
@@ -716,16 +731,14 @@ for (i in str_cat) {
   df_summary.2[,i] <- n
 }
 
-#colnames(df_summary.2) <-  c("ID","tags", "FSM", "ISM", "NIC", "NNC", "antisense", "fusion", "genic", "intergenic")
 
-
-##***** Add GenomeBrowser URL to the P/A table
+# ----- Add GenomeBrowser URL to the P/A table
 
 df.PA <- res[[3]]
 df.PA$TAGS <- lapply(df.PA$TAGS, iso2url)
 
 
-##***** Counts per gene and exon structure
+# ----- Counts per gene and exon structure
 
 countpergene <- c()
 exonstructure <- c()
@@ -783,14 +796,14 @@ category <- rep(c("Novel-Mono", "Novel-Multi", "Annotated-Mono", "Annotated-Mult
 exonstructure <- data.frame(sample, category, exonstructure)
 
 
-##***** Summary dataframe pivoted
+# ----- Summary dataframe pivoted
 
 df_SC <- df_summary.1[1:limit,]
 df_SC$total <- NULL
 df_SC <- df_SC %>% 
   pivot_longer(!"ID", "SC")
 
-##***** Distance to TSS, TTS and CAGE peak
+# ----- Distance to TSS, TTS and CAGE peak
 
 dist.list <- list()
 dist.msr <- c("diff_to_TSS", "diff_to_TTS", "dist_to_cage_peak")
@@ -819,7 +832,7 @@ for (i in dist.msr){
   }
 }
 
-##***** RT-switching
+# ----- RT-switching
 
 FSM <- c()
 NIC <- c()
@@ -842,7 +855,7 @@ FSM.RT <- data.frame(sample, FSM)
 NIC.RT <- data.frame(sample, NIC)
 NNC.RT <- data.frame(sample, NNC)
 
-##***** List of unique tags for each sample
+# ----- List of unique tags for each sample
 
 l <- list()
 for (i in 3:ncol(res[[2]])){
@@ -850,7 +863,8 @@ for (i in 3:ncol(res[[2]])){
 }
 names(l) <- colnames(res[[2]])[3:ncol(res[[2]])]
 
-##***** LRGASP SIRV metrics
+
+# -------------------- LRGASP SIRV metrics
 
 if (lrgasp == TRUE){
   sirv.metrics <- list()
@@ -861,17 +875,19 @@ if (lrgasp == TRUE){
 sirv.metrics <- bind_cols(sirv.metrics)
 colnames(sirv.metrics) <- names(lrgasp.res)
 
-print("Metrics calculated")
-print("Generating plots...")
 
-
-# -------------------- Table and Plot generation
+#######################################
+#                                     #
+#     TABLE AND PLOT GENERATION       #
+#                                     #
+#######################################
 
 # -------------------- 
 # -------------------- 
 # TABLE INDEX
 # t1: summary table
 # t2: presence/ausence table
+# t3: SIRV metrics
 
 # -------------------- 
 # -------------------- 
@@ -892,7 +908,11 @@ print("Generating plots...")
 # p12: UpSet plot for SC
 # p13: TSS standard deviation
 # p14: TTS standard deviation
+# p16: iso analysis
+# p17: gene analysis
 
+
+print("Generating plots for the report...")
 
 # -------------------- Global plot parameters
 # COPY-PASTE FROM SQANTI3 REPORT
@@ -1167,8 +1187,9 @@ p17.5 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$FL_cpm, y=res$gene_metr
 
 
 # -------------------- Output report
-print("Generating report...")
-Sys.setenv(RSTUDIO_PANDOC = "/usr/lib/rstudio/bin/pandoc")
+
+print("Generating the HTML report...")
+#Sys.setenv(RSTUDIO_PANDOC = "/usr/lib/rstudio/bin/pandoc")
 rmarkdown::render(
   input = paste(getwd(), "SQANTI3_comparison_report.Rmd", sep = "/"),
   output_dir = output_directory,
@@ -1177,5 +1198,8 @@ rmarkdown::render(
 
 # -------------------- Output csv
 
+print("Writting CSV file with P/A table of UJC...")
 write.csv(res$comparisonPA, paste0(output_directory, "/", output_name, ".csv"))
+
+print("DONE\nExecution finished")
 
