@@ -228,6 +228,13 @@ if (TSS_TTS_coord == TRUE){
 }
 ```
 
+```{r}
+p18
+p19
+p20
+```
+
+
 
 ```{r, results='asis'}
 if (lrgasp == TRUE){
