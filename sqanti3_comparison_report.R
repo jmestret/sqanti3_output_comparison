@@ -53,7 +53,7 @@ count_FL <- function(count_f, class_f){
   
   count_f.join <- list(class_f, count_f.compact) %>% 
     purrr::reduce(left_join, by="isoform")
-  class_f$FL_cpm <- cpm(count_f.join$value)
+  class_f$FL <- count_f.join$value
   return(class_f)
 }
 
@@ -67,9 +67,10 @@ isoformTags <- function(junctions_file) {
     dt[, list(tagcoord = paste0(coord, collapse = "_")),
        by = c("isoform", "chrom", "strand")]
   df <- as.data.frame(dt)
-  df <- df[order(df$isoform),]
-  tag <- paste(df$chrom, df$strand, df$tagcoord, sep = "_")
-  return(tag)
+  df$tags <- paste(df$chrom, df$strand, df$tagcoord, sep = "_")
+  #df <- df[order(df$isoform),]
+  #tag <- paste(df$chrom, df$strand, df$tagcoord, sep = "_")
+  return(df[,c("isoform","tags")])
 }
 
 
@@ -134,7 +135,8 @@ uniquetag <- function(class_file) {
   dt.out <-
     dt[, list(
       associated_gene=list(unique(associated_gene)),
-      FL_cpm=as.numeric(sum(FL_cpm)),
+      FL=as.numeric(sum(FL)),
+      l_FL=list(FL),
       exons=unique(exons),
       TSS_genomic_coord=list(TSS_genomic_coord),
       TTS_genomic_coord=list(TTS_genomic_coord),
@@ -156,7 +158,8 @@ uniquetag_simple <- function(class_file) {
   dt.out <-
     dt[, list(
       associated_gene=list(unique(associated_gene)),
-      FL_cpm=as.numeric(sum(FL_cpm)),
+      FL=as.numeric(sum(FL)),
+      l_FL=list(FL),
       exons=unique(exons),
       length=list(length),
       isoform = list(isoform)
@@ -175,12 +178,6 @@ multipleComparison <- function(l_class){
     purrr::reduce(full_join, by = "col") %>%
     select(-col) %>%
     setNames(a)
-}
-
-cpm <- function(v){
-  y <- sum(v)
-  z <- sapply(v, function(x)(x*10^6)/y)
-  return(z)
 }
 
 
@@ -265,11 +262,14 @@ iso_analysis <- function(l_class){
   class_compact <- class_bind[, list(
     exons=unique(exons),
     length=as.numeric(median(unlist(length))),
-    FL_cpm=as.numeric(median(FL_cpm))
+    FL_cpm=as.numeric(median(FL))
   ), by="tags"]
   
   class_compact <- as.data.frame(class_compact)
-
+  tot_reads <- sum(class_compact$FL_cpm)
+  
+  class_compact$FL_cpm <- (class_compact$FL_cpm * 10^6)/tot_reads 
+  
   if (TSS_TTS_coord == TRUE) {
     TSS_TTS_df <- SD_TSS_TTS(l_class)
     df_iso <- list(TSS_TTS_df, class_compact) %>% 
@@ -339,48 +339,25 @@ get_jaccard <- function(l_df, l_class){
   return(df)
 }
 
-gene_expr <- function(l_class){
-  l_df_exp <- list()
-  for (i in length(l_class)){
-    x <- del_novel_genes(l_class[[i]])
-    x <- data.table::data.table(x)
-    x <- x[, list(
-      FL_cpm=sum(FL_cpm)
-    ), by="associated_gene"]
-    l_df_exp[[i]] <- as.data.frame(x)
-  }
+gene_expr <- function(res_class){
+  ref_genes <- del_novel_genes(res_class)
+  ref_genes <- data.table::data.table(ref_genes)
   
-  class.bind <- bind_rows(l_class)
-  class_bind <- data.table::data.table(class.bind)
+  ref_genes.UJC <- ref_genes[, list(
+    associated_gene=unique(associated_gene),
+    FL=as.numeric(median(FL))
+  ), by="tags"]
   
-  class_compact <- class_bind[, list(
-    FL_cpm=as.numeric(median(FL_cpm))
+  ref_genes.out <- ref_genes.UJC[, list(
+    FL_cpm=sum(FL)
   ), by="associated_gene"]
   
-  class_compact <- as.data.frame(class_compact)
+  ref_genes.out <- as.data.frame(ref_genes.out)
   
-  return(class_compact)
+  tot_exp <- sum(ref_genes.out$FL_cpm)
+  ref_genes.out$FL_cpm <- (ref_genes.out$FL_cpm * 10^6) / tot_exp
   
-  
-  
-  #ref_genes <- del_novel_genes(res_class)
-  #ref_genes <- data.table::data.table(ref_genes)
-  
-  #ref_genes.UJC <- ref_genes[, list(
-   # associated_gene=unique(associated_gene),
-    #FL=as.numeric(median(FL))
-  #), by="tags"]
-  
-  #ref_genes.out <- ref_genes.UJC[, list(
-   # FL_cpm=sum(FL)
-  #), by="associated_gene"]
-  
-  #ref_genes.out <- as.data.frame(ref_genes.out)
-  
-  #tot_exp <- sum(ref_genes.out$FL_cpm)
-  #ref_genes.out$FL_cpm <- (ref_genes.out$FL_cpm * 10^6) / tot_exp
-  
-  #return(ref_genes.out)
+  return(ref_genes.out)
 }
 
 gene_length <- function(df_gtf, df_gene){
@@ -415,7 +392,7 @@ gene_analysis <- function(l_class){
   
   df_jac <- get_jaccard(l_gene_df, l_class)
   
-  df_exp <- gene_expr(l_res_class)
+  df_exp <- gene_expr(class_bind)
   if (class(ref_gtf) == "data.frame"){
     df_len <- gene_length(ref_gtf, df_gene)
     l_df_metrics <- list(df_gene, df_jac, df_exp, df_len)
@@ -454,17 +431,18 @@ compareTranscriptomes <- function(l_iso){
     if (length(tags) != nrow(class.filtered)){
       class.filtered <- filter_monoexon_sirv(l_iso[[i]][[1]])
     }
-    class.filtered[,"tags"] <- tags # add tags
+    #class.filtered[,"tags"] <- tags # add tags
+    class.filtered <- list(class.filtered, tags) %>% 
+      purrr:::reduce(left_join, by="isoform")
     
     if (TSS_TTS_coord){
-      class.swap <- swapcoord(class.filtered) # swap - strand
-      class.uniquetags <- as.data.frame(uniquetag(class.swap)) # group by tag
-      class.out <- reverseswap(class.uniquetags) # re-swap TSS and TSS - strand
+      #class.swap <- swapcoord(class.filtered) # swap - strand
+      #class.uniquetags <- as.data.frame(uniquetag(class.swap)) # group by tag
+      class.out <- as.data.frame(uniquetag(class.filtered)) 
     } else{
       class.out <- uniquetag_simple(class.filtered) # group by tag
     }
     
-    class.out$FL_cpm <- cpm(class.out$FL_cpm)
     class.out <- addSC(class.out)
     l_class[[i]] <- class.out # add to list
   }
@@ -629,7 +607,7 @@ if (length(class_in) != length(count.files)){
 # ----- GTF input
 
 gtf_name <- list.files(dir_in,
-                       pattern = "*.gtf$",
+                       pattern = "*.gtf",
                        all.files = FALSE,
                        full.names = TRUE)
 if (length(gtf_name) == 1){
@@ -650,7 +628,7 @@ if (length(gtf_name) == 1){
     print("ERROR: Issue loading reference GTF file")
   }
 } else{
-  print("ERROR: Issue loading reference GTF file.")
+  print("ERROR: Issue loading reference GTF file")
 }
 
 
@@ -832,7 +810,7 @@ df_SC <- df_SC %>%
 
 dist.list <- list()
 dist.msr <- c("diff_to_TSS", "diff_to_TTS", "dist_to_cage_peak")
-dist.SC <- c("FSM", "ISM")
+dist.SC <- c("full-splice_match", "incomplete-splice_match")
 contador <- 1
 for (i in dist.msr){
   for (j in dist.SC){
@@ -865,13 +843,13 @@ NNC <- c()
 for (i in 1:limit){
   data.class <- f_in[[i]][[1]]
   df <- group_by(data.class, structural_category, RTS_stage) %>% dplyr::summarise(count=dplyr::n(), .groups = 'drop')
-  FSM.match <- df$count[which(df$structural_category == "FSM")]
+  FSM.match <- df$count[which(df$structural_category == "full-splice_match")]
   FSM <- c(FSM, ((FSM.match[2]/(FSM.match[1]+FSM.match[2]))*100))
   
-  NIC.match <- df$count[which(df$structural_category == "NIC")]
+  NIC.match <- df$count[which(df$structural_category == "novel_in_catalog")]
   NIC <- c(NIC, ((NIC.match[2]/(NIC.match[1]+NIC.match[2]))*100))
   
-  NNC.match <- df$count[which(df$structural_category == "NNC")]
+  NNC.match <- df$count[which(df$structural_category == "novel_not_in_catalog")]
   NNC <- c(NNC, ((NNC.match[2]/(NNC.match[1]+NNC.match[2]))*100))
 }
 
@@ -896,9 +874,9 @@ if (lrgasp == TRUE){
   for (i in 1:length(lrgasp.res)){
     sirv.metrics[[i]] <- lrgasp.res[[names(lrgasp.res)[i]]]["SIRV"]
   }
-  sirv.metrics <- bind_cols(sirv.metrics)
-  colnames(sirv.metrics) <- names(lrgasp.res)
 }
+sirv.metrics <- bind_cols(sirv.metrics)
+colnames(sirv.metrics) <- names(lrgasp.res)
 
 
 #######################################
@@ -992,17 +970,15 @@ t2 <- DT::datatable(df.PA,
 
 # -------------------- 
 # TABLE 3: SIRV metrics
-if (lrgasp == TRUE){
-  t3 <- DT::datatable(sirv.metrics,
-                      extensions = "Buttons",
-                      options = list(
-                        dom = 'Bfrtip',
-                        buttons = c('copy', 'csv', 'pdf', 'print')
-                      ),
-                      escape = FALSE,
-                      caption = "Table 4. SIRV metrics")
-}
 
+t3 <- DT::datatable(sirv.metrics,
+                    extensions = "Buttons",
+                    options = list(
+                      dom = 'Bfrtip',
+                      buttons = c('copy', 'csv', 'pdf', 'print')
+                    ),
+                    escape = FALSE,
+                    caption = "Table 4. SIRV metrics")
 
 
 # -------------------- 
@@ -1155,79 +1131,116 @@ if (TSS_TTS_coord == TRUE) {
     # Iso metrics
     # TSS
     
-    p16.1 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$SD.TSS), y=res$iso_metrics$exons)) +
+    p16.1 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TSS, y=res$iso_metrics$exons)) +
       geom_point(alpha=1/10) +
-      geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 SD TSS") + ylab("N exons") + ggtitle("UJC SD TSS vs Nº exons") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE) + xlab("SD TSS") + ylab("N exons") + ggtitle("UJC SD TSS vs Nº exons") + mytheme
     
-    p16.2 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$SD.TSS), y=log2(res$iso_metrics$length))) +
+    p16.2 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TSS, y=res$iso_metrics$length)) +
       geom_point(alpha=1/10) +
-      geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 SD TSS") + ylab("log 2 Length") + ggtitle("UJC SD TSS vs Length") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("SD TSS") + ylab("N Length") + ggtitle("UJC SD TSS vs Length") + mytheme
     
-    p16.3 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$SD.TSS), y=log2(res$iso_metrics$FL_cpm))) +
+    p16.3 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TSS, y=res$iso_metrics$FL_cpm)) +
       geom_point(alpha=1/10) +
-      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("log 2 SD TSS") + ylab("log 2 FL CPM") + ggtitle("UJC SD TSS vs CPM") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("SD TSS") + ylab("FL CPM") + ggtitle("UJC SD TSS vs CPM") + mytheme
     
-    p16.4 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$length), y=log2(res$iso_metrics$FL_cpm))) +
+    p16.4 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$length, y=res$iso_metrics$FL_cpm)) +
       geom_point(alpha=1/10) +
-      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("log 2 Length") + ylab("log 2 FL CPM") + ggtitle("UJC Length vs CPM") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("Length") + ylab("FL CPM") + ggtitle("UJC Length vs CPM") + mytheme
     
     # TTS
-    p16.5 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$SD.TTS), y=res$iso_metrics$exons)) +
+    p16.5 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TTS, y=res$iso_metrics$exons)) +
       geom_point(alpha=1/10) +
-      geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 SD TTS") + ylab("N exons") + ggtitle("UJC SD TTS vs Nº exons") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE) + xlab("SD TTS") + ylab("N exons") + ggtitle("UJC SD TTS vs Nº exons") + mytheme
     
-    p16.6 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$SD.TTS), y=log2(res$iso_metrics$length))) +
+    p16.6 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TTS, y=res$iso_metrics$length)) +
       geom_point(alpha=1/10) +
-      geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 SD TTS") + ylab("log 2 Length") + ggtitle("UJC SD TTS vs Length") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("SD TTS") + ylab("N Length") + ggtitle("UJC SD TTS vs Length") + mytheme
     
-    p16.7 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$SD.TTS), y=log2(res$iso_metrics$FL_cpm))) +
+    p16.7 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$SD.TTS, y=res$iso_metrics$FL_cpm)) +
       geom_point(alpha=1/10) +
-      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("log 2 SD TTS") + ylab("log 2 FL CPM") + ggtitle("UJC SD TTS vs CPM") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("SD TTS") + ylab("FL CPM") + ggtitle("UJC SD TTS vs CPM") + mytheme
     
-    p16.8 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$length), y=log2(res$iso_metrics$FL_cpm))) +
+    p16.8 <- ggplot(res$iso_metrics, aes(x=res$iso_metrics$length, y=res$iso_metrics$FL_cpm)) +
       geom_point(alpha=1/10) +
-      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("log 2 Length") + ylab("log 2 FL CPM") + ggtitle("UJC Length vs CPM") + mytheme
+      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("Length") + ylab("FL CPM") + ggtitle("UJC Length vs CPM") + mytheme
+    
+    # Isometris Log2
+    
+    p16.9 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$SD.TSS), y=res$iso_metrics$exons)) +
+      geom_point(alpha=1/10) +
+      geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 SD TSS") + ylab("N exons") + ggtitle("log2 SD TSS vs Nº exons") + mytheme
+    
+    p16.10 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$SD.TSS), y=log2(res$iso_metrics$length))) +
+      geom_point(alpha=1/10) +
+      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("log 2 SD TSS") + ylab("log 2 N Length") + ggtitle("log2 SD TSS vs Length") + mytheme
+    
+    p16.11 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$SD.TSS), y=log2(res$iso_metrics$FL_cpm))) +
+      geom_point(alpha=1/10) +
+      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("log 2 SD TSS") + ylab("log 2 FL CPM") + ggtitle("log2 SD TSS vs CPM") + mytheme
+    
+    p16.12 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$length), y=log2(res$iso_metrics$FL_cpm))) +
+      geom_point(alpha=1/10) +
+      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("log 2 Length") + ylab("log 2 FL CPM") + ggtitle("log2 Length vs CPM") + mytheme
+    
+    
+    p16.13 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$SD.TTS), y=res$iso_metrics$exons)) +
+      geom_point(alpha=1/10) +
+      geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 SD TTS") + ylab("N exons") + ggtitle("log2 SD TTS vs Nº exons") + mytheme
+    
+    p16.14 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$SD.TTS), y=log2(res$iso_metrics$length))) +
+      geom_point(alpha=1/10) +
+      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("log 2 SD TTS") + ylab("log 2 N Length") + ggtitle("log2 SD TTS vs Length") + mytheme
+    
+    p16.15 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$SD.TTS), y=log2(res$iso_metrics$FL_cpm))) +
+      geom_point(alpha=1/10) +
+      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("log 2 SD TTS") + ylab("log 2 FL CPM") + ggtitle("log2 SD TTS vs CPM") + mytheme
+    
+    p16.16 <- ggplot(res$iso_metrics, aes(x=log2(res$iso_metrics$length), y=log2(res$iso_metrics$FL_cpm))) +
+      geom_point(alpha=1/10) +
+      geom_smooth(method="loess", color="red", se=FALSE)  + xlab("log 2 Length") + ylab("log 2 FL CPM") + ggtitle("log2 Length vs CPM") + mytheme
     
 }
 
 ##*****
 # Gene metrics
 
-p17.1 <- ggplot(res$gene_metrics, aes(x=log2(res$gene_metrics$length), y=log2(res$gene_metrics$FL_cpm))) +
-  geom_point(alpha=1/10) +
-  geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 Length") + ylab("log 2 FL CPM") + ggtitle("Gene Length vs CPM") + mytheme
+p17.1 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$length, y=res$gene_metrics$FL_cpm)) +
+  geom_point() +
+  geom_smooth(method="loess", color="red", se=FALSE) + xlab("Length") + ylab("FL CPM") + ggtitle("Gene Length vs CPM") + mytheme
 
-p17.2 <- ggplot(res$gene_metrics, aes(x=log2(res$gene_metrics$length), y=res$gene_metrics$N_UJC)) +
-  geom_point(alpha=1/10) +
-  geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 Length") + ylab("N UJC") + ggtitle("Gene Length vs N_UJC") + mytheme
+p17.2 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$length, y=res$gene_metrics$N_UJC)) +
+  geom_point() +
+  geom_smooth(method="loess", color="red", se=FALSE) + xlab("Length") + ylab("N UJC") + ggtitle("Gene Length vs N_UJC") + mytheme
 
-p17.3 <- ggplot(res$gene_metrics, aes(x=log2(res$gene_metrics$length), y=res$gene_metrics$jaccard)) +
-  geom_point(alpha=1/10) +
-  geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 Length") + ylab("Jaccard index") + ggtitle("Gene Length vs Jaccard index") + mytheme
+p17.3 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$length, y=res$gene_metrics$jaccard)) +
+  geom_point() +
+  geom_smooth(method="loess", color="red", se=FALSE) + xlab("Length") + ylab("Jaccard index")  + ggtitle("Gene Length vs Jaccard index") + mytheme
 
 p17.4 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$N_UJC, y=res$gene_metrics$jaccard)) +
-  geom_point(alpha=1/10) +
-  geom_smooth(method="loess", color="red", se=FALSE) + xlab("N UJC") + ylab("Jaccard index") + ggtitle("Gene N_UJC vs Jaccard index") + mytheme
+  geom_point() +
+  geom_smooth(method="loess", color="red", se=FALSE) + xlab("N_UJC") + ylab("Jaccard index") + ggtitle("Gene N_UJC vs Jaccard index") + mytheme
 
-p17.5 <- ggplot(res$gene_metrics, aes(x=log2(res$gene_metrics$FL_cpm), y=res$gene_metrics$jaccard)) +
-  geom_point(alpha=1/10) +
-  geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 FL CPM") + ylab("Jaccard index") + ggtitle("Gene CPM vs Jaccard index") + mytheme
 
-p18 <- ggplot(res$iso_metrics, aes(x=(res$iso_metrics$SD.TSS), y=(res$iso_metrics$FL_cpm))) +
-  geom_point(alpha=1/10) +
-  geom_smooth(method="loess", color="red", se=FALSE)  + xlab("SD TSS") + ylab("FL CPM") + ggtitle("UJC SD TSS vs CPM") + mytheme
-p19 <- ggplot(res$iso_metrics, aes(x=(res$iso_metrics$SD.TTS), y=(res$iso_metrics$FL_cpm))) +
-  geom_point(alpha=1/10) +
-  geom_smooth(method="loess", color="red", se=FALSE)  + xlab("log 2 SD TTS") + ylab("log 2 FL CPM") + ggtitle("UJC SD TTS vs CPM") + mytheme
 
-p20 <- ggplot(res$gene_metrics, aes(x=(res$gene_metrics$length), y=(res$gene_metrics$FL_cpm))) +
-  geom_point(alpha=1/10) +
-  geom_smooth(method="loess", color="red", se=FALSE) + xlab("Length") + ylab("FL CPM") + ggtitle("Gene Length vs CPM") + mytheme
+p17.5 <- ggplot(res$gene_metrics, aes(x=log2(res$gene_metrics$length), y=log2(res$gene_metrics$FL_cpm))) +
+  geom_point() +
+  geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 Length") + ylab("log 2 FL CPM") + ggtitle("log2 Gene Length vs CPM") + mytheme
+
+p17.6 <- ggplot(res$gene_metrics, aes(x=log2(res$gene_metrics$length), y=res$gene_metrics$N_UJC)) +
+  geom_point() +
+  geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 Length") + ylab("N UJC") + ggtitle("log 2 Gene Length vs N_UJC") + mytheme
+
+p17.7 <- ggplot(res$gene_metrics, aes(x=log2(res$gene_metrics$length), y=res$gene_metrics$jaccard)) +
+  geom_point() +
+  geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 Length") + ylab("Jaccard index")  + ggtitle("log 2 Gene Length vs Jaccard index") + mytheme
+
+
+# Gene metrics log2
 
 # -------------------- Output report
 
 print("Generating the HTML report...")
-Sys.setenv(RSTUDIO_PANDOC = "/usr/lib/rstudio/bin/pandoc")
+#Sys.setenv(RSTUDIO_PANDOC = "/usr/lib/rstudio/bin/pandoc")
 rmarkdown::render(
   input = paste(getwd(), "SQANTI3_comparison_report.Rmd", sep = "/"),
   output_dir = output_directory,

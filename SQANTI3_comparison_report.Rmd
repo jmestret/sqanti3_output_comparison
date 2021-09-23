@@ -204,36 +204,51 @@ if (TSS_TTS_coord == TRUE) {
 
 ## Gene metrics{.tabset .tabset-fade}
 
+### Raw
+
 ```{r}
 p17.1
 p17.2
 p17.3
 p17.4
-p17.5
 ```
+
+### Log 2
+
+```{r}
+p17.5
+p17.6
+p17.7
+```
+
 
 ```{r, results='asis'}
 if (TSS_TTS_coord == TRUE){
   cat("\n\n## Isoform metrics{.tabset .tabset-fade}\n\n")
   cat("\n\n### TSS{.tabset .tabset-fade}\n\n")
+  cat("\n\n#### Raw\n\n")
   print(p16.1)
   print(p16.2)
   print(p16.3)
   print(p16.4)
+  cat("\n\n#### Log 2\n\n")
+  print(p16.9)
+  print(p16.10)
+  print(p16.11)
+  print(p16.12)
   cat("\n\n### TTS{.tabset .tabset-fade}\n\n")
+  cat("\n\n#### Raw\n\n")
   print(p16.5)
   print(p16.6)
   print(p16.7)
   print(p16.8)
+  cat("\n\n#### Log 2\n\n")
+  print(p16.13)
+  print(p16.14)
+  print(p16.15)
+  print(p16.16)
 }
 ```
-
-```{r}
-p18
-p19
-p20
-```
-
 
 
 ```{r, results='asis'}
