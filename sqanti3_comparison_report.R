@@ -874,9 +874,9 @@ if (lrgasp == TRUE){
   for (i in 1:length(lrgasp.res)){
     sirv.metrics[[i]] <- lrgasp.res[[names(lrgasp.res)[i]]]["SIRV"]
   }
+  sirv.metrics <- bind_cols(sirv.metrics)
+  colnames(sirv.metrics) <- names(lrgasp.res)
 }
-sirv.metrics <- bind_cols(sirv.metrics)
-colnames(sirv.metrics) <- names(lrgasp.res)
 
 
 #######################################
@@ -971,14 +971,16 @@ t2 <- DT::datatable(df.PA,
 # -------------------- 
 # TABLE 3: SIRV metrics
 
-t3 <- DT::datatable(sirv.metrics,
-                    extensions = "Buttons",
-                    options = list(
-                      dom = 'Bfrtip',
-                      buttons = c('copy', 'csv', 'pdf', 'print')
-                    ),
-                    escape = FALSE,
-                    caption = "Table 4. SIRV metrics")
+if (lrgasp == TRUE){
+  t3 <- DT::datatable(sirv.metrics,
+                      extensions = "Buttons",
+                      options = list(
+                        dom = 'Bfrtip',
+                        buttons = c('copy', 'csv', 'pdf', 'print')
+                      ),
+                      escape = FALSE,
+                      caption = "Table 4. SIRV metrics")
+}
 
 
 # -------------------- 
