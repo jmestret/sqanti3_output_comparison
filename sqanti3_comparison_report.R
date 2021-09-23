@@ -810,7 +810,7 @@ df_SC <- df_SC %>%
 
 dist.list <- list()
 dist.msr <- c("diff_to_TSS", "diff_to_TTS", "dist_to_cage_peak")
-dist.SC <- c("full-splice_match", "incomplete-splice_match")
+dist.SC <- c("FSM", "ISM")
 contador <- 1
 for (i in dist.msr){
   for (j in dist.SC){
@@ -843,13 +843,13 @@ NNC <- c()
 for (i in 1:limit){
   data.class <- f_in[[i]][[1]]
   df <- group_by(data.class, structural_category, RTS_stage) %>% dplyr::summarise(count=dplyr::n(), .groups = 'drop')
-  FSM.match <- df$count[which(df$structural_category == "full-splice_match")]
+  FSM.match <- df$count[which(df$structural_category == "FSM")]
   FSM <- c(FSM, ((FSM.match[2]/(FSM.match[1]+FSM.match[2]))*100))
   
-  NIC.match <- df$count[which(df$structural_category == "novel_in_catalog")]
+  NIC.match <- df$count[which(df$structural_category == "NIC")]
   NIC <- c(NIC, ((NIC.match[2]/(NIC.match[1]+NIC.match[2]))*100))
   
-  NNC.match <- df$count[which(df$structural_category == "novel_not_in_catalog")]
+  NNC.match <- df$count[which(df$structural_category == "NNC")]
   NNC <- c(NNC, ((NNC.match[2]/(NNC.match[1]+NNC.match[2]))*100))
 }
 
@@ -1207,33 +1207,33 @@ if (TSS_TTS_coord == TRUE) {
 # Gene metrics
 
 p17.1 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$length, y=res$gene_metrics$FL_cpm)) +
-  geom_point() +
+  geom_point(alpha=1/10) +
   geom_smooth(method="loess", color="red", se=FALSE) + xlab("Length") + ylab("FL CPM") + ggtitle("Gene Length vs CPM") + mytheme
 
 p17.2 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$length, y=res$gene_metrics$N_UJC)) +
-  geom_point() +
+  geom_point(alpha=1/10) +
   geom_smooth(method="loess", color="red", se=FALSE) + xlab("Length") + ylab("N UJC") + ggtitle("Gene Length vs N_UJC") + mytheme
 
 p17.3 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$length, y=res$gene_metrics$jaccard)) +
-  geom_point() +
+  geom_point(alpha=1/10) +
   geom_smooth(method="loess", color="red", se=FALSE) + xlab("Length") + ylab("Jaccard index")  + ggtitle("Gene Length vs Jaccard index") + mytheme
 
 p17.4 <- ggplot(res$gene_metrics, aes(x=res$gene_metrics$N_UJC, y=res$gene_metrics$jaccard)) +
-  geom_point() +
+  geom_point(alpha=1/10) +
   geom_smooth(method="loess", color="red", se=FALSE) + xlab("N_UJC") + ylab("Jaccard index") + ggtitle("Gene N_UJC vs Jaccard index") + mytheme
 
 
 
 p17.5 <- ggplot(res$gene_metrics, aes(x=log2(res$gene_metrics$length), y=log2(res$gene_metrics$FL_cpm))) +
-  geom_point() +
+  geom_point(alpha=1/10) +
   geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 Length") + ylab("log 2 FL CPM") + ggtitle("log2 Gene Length vs CPM") + mytheme
 
 p17.6 <- ggplot(res$gene_metrics, aes(x=log2(res$gene_metrics$length), y=res$gene_metrics$N_UJC)) +
-  geom_point() +
+  geom_point(alpha=1/10) +
   geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 Length") + ylab("N UJC") + ggtitle("log 2 Gene Length vs N_UJC") + mytheme
 
 p17.7 <- ggplot(res$gene_metrics, aes(x=log2(res$gene_metrics$length), y=res$gene_metrics$jaccard)) +
-  geom_point() +
+  geom_point(alpha=1/10) +
   geom_smooth(method="loess", color="red", se=FALSE) + xlab("log 2 Length") + ylab("Jaccard index")  + ggtitle("log 2 Gene Length vs Jaccard index") + mytheme
 
 
